@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Chrome & ink (light internal-tool theme, Apple-gray neutrals) */
+  --color-surface: #ffffff;
+  --color-page: #f5f5f7;
+  --color-ink: #1d1d1f;
+  --color-ink-secondary: #515154;
+  --color-ink-muted: #86868b;
+  --color-hairline: #e3e3e8;
+  --color-baseline: #c7c7cc;
+
+  /* Brand accent (categorical slot 1) */
+  --color-accent: #2a78d6;
+  --color-accent-strong: #1c5cab;
+  --color-accent-soft: #d6e6fa;
+
+  /* Status (reserved, never series colors) — desaturated but distinguishable */
+  --color-good: #3a9a58;
+  --color-good-text: #206a3c;
+  --color-warning: #dfa32b;
+  --color-serious: #d97f5c;
+  --color-critical: #c74e4e;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.015em;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Formal quotation document (FormalQuotePreview) */
+#formal-quote-doc {
+  font-family: Arial, Helvetica, sans-serif;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.fq-editable {
+  outline: none;
+  border-bottom: 1px dashed #9aa7b5;
+  min-width: 1.5rem;
+  display: inline-block;
+}
+.fq-editable:hover {
+  background: #f4f8ff;
+}
+.fq-editable:focus {
+  background: #eef5ff;
+  border-bottom-color: #2a78d6;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  /* Print only the formal document. The preview portals straight under
+     <body>, so everything else (app root, toasts) is removed from layout and
+     the document prints in normal flow — no visibility/absolute tricks.
+     FormalQuotePreview toggles .fq-print-mode on <html> and <body> while
+     open; keying off a class (not :has()) keeps this working in browsers
+     without :has() support, where the app shell would otherwise print as a
+     blank band above the document. */
+  html.fq-print-mode,
+  body.fq-print-mode {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body.fq-print-mode > :not(.fq-overlay) {
+    display: none !important;
+  }
+  .fq-overlay {
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+  .fq-overlay > div {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  .fq-controls {
+    display: none !important;
+  }
+  #formal-quote-doc {
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* Strip the on-screen editing affordances */
+  .fq-editable {
+    border-bottom: none !important;
+    background: none !important;
+  }
+  .fq-upload-box {
+    border: none !important;
+  }
+  .fq-upload-box.fq-empty {
+    visibility: hidden !important;
+  }
+}
+
+/* Slim scrollbar for the dashboard's scrollable chart legends */
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-baseline) transparent;
+}
+.slim-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-baseline);
+  border-radius: 3px;
+}
