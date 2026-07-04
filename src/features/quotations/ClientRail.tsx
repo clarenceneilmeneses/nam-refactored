@@ -150,7 +150,7 @@ export function ClientRail({
         <Button
           variant="outline"
           size="sm"
-          className="w-full text-[#7a5200]"
+          className="w-full text-warning-text"
           onClick={onMerge}
           title="Merge duplicate client names"
         >

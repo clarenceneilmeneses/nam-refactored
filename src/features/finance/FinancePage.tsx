@@ -205,7 +205,7 @@ export function FinancePage() {
           globalFilter={search}
           onGlobalFilterChange={setSearch}
           pageSize={50}
-          rowClassName={(row) => (isOverdue(row) ? 'bg-[#d03b3b]/4' : '')}
+          rowClassName={(row) => (isOverdue(row) ? 'bg-critical/5' : '')}
         />
       )}
     </div>

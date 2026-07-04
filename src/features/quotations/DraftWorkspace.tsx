@@ -303,7 +303,7 @@ export function DraftWorkspace({ mode, onClose }: DraftWorkspaceProps) {
                     )}
                   />
                   {itemName.trim() && !matchedProduct && (
-                    <p className="text-xs text-[#7a5200]">New item — it will be saved as a draft product with 0 stock.</p>
+                    <p className="text-xs text-warning-text">New item — it will be saved as a draft product with 0 stock.</p>
                   )}
                 </div>
 

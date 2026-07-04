@@ -109,7 +109,7 @@ export function RolesPage() {
                   <tr key={role.id} className="border-b border-hairline last:border-0 hover:bg-page/70">
                     <td className="px-3 py-2 align-top">
                       <p className="flex items-center gap-1.5 font-medium">
-                        {isSuper && <Crown className="h-3.5 w-3.5 text-[#b06000]" aria-hidden />}
+                        {isSuper && <Crown className="h-3.5 w-3.5 text-warning-text" aria-hidden />}
                         {role.name}
                       </p>
                       <p className="text-xs text-ink-muted">{role.description || 'No description'}</p>

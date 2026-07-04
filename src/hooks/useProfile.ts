@@ -58,10 +58,10 @@ export function useUploadAvatar() {
   const { session, profile, refreshProfile } = useAuth()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (file: Blob) => {
       const uid = session?.user.id
       if (!uid || !profile) throw new Error('Not signed in')
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+      const ext = (file.type.split('/')[1] || 'png').toLowerCase()
       const path = `${uid}/avatar.${ext}`
       const { error: upErr } = await supabase.storage
         .from(AVATAR_BUCKET)

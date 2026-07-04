@@ -190,7 +190,7 @@ export function DrillChips({
         return (
           <span
             key={key}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#e0e7ff] px-2.5 py-1 font-medium text-[#4338ca]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 font-medium text-accent-strong"
           >
             <Icon className="h-3 w-3" />
             {drills[key]}

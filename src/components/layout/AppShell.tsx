@@ -21,12 +21,17 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAvatarUrl } from '@/hooks/useProfile'
+import { useSettings } from '@/hooks/useSettings'
+import { useTheme } from '@/hooks/useTheme'
 import { SUPER_ADMIN_ROLE_ID } from '@/components/layout/PermissionGate'
 import { Avatar } from '@/components/shared/Avatar'
+import { SidebarClock } from '@/components/layout/SidebarClock'
 import { cn } from '@/lib/utils'
 import type { PermissionName } from '@/types/database'
 import namLogo from '@/assets/nam-logo.png'
 import namMark from '@/assets/nam-mark.png'
+import namLogoDark from '@/assets/nam-logo-dark.png'
+import namMarkDark from '@/assets/nam-mark-dark.png'
 
 type NavItem = {
   to: string
@@ -87,7 +92,12 @@ function manilaGreeting(): string {
 export function AppShell() {
   const { session, profile, loading, hasPermission, signOut } = useAuth()
   const avatarUrl = useAvatarUrl()
-  const [collapsed, setCollapsed] = useState(false)
+  const { startCollapsed } = useSettings()
+  const { resolved } = useTheme()
+  const [collapsed, setCollapsed] = useState(startCollapsed)
+
+  const logoSrc = resolved === 'dark' ? namLogoDark : namLogo
+  const markSrc = resolved === 'dark' ? namMarkDark : namMark
   const [mobileOpen, setMobileOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -130,7 +140,7 @@ export function AppShell() {
   })).filter((section) => section.items.length > 0)
 
   const navLinks = (
-    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+    <nav className="no-scrollbar flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
       {visibleSections.map((section, i) => (
         <div key={section.heading ?? `section-${i}`} className="flex flex-col gap-0.5">
           {collapsed
@@ -148,7 +158,7 @@ export function AppShell() {
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink',
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-ink/5 hover:text-ink',
                   isActive && 'bg-accent-soft/60 font-medium text-accent-strong hover:bg-accent-soft/60',
                   collapsed && 'justify-center px-2',
                 )
@@ -190,7 +200,7 @@ export function AppShell() {
         onClick={() => setMobileOpen(false)}
         className={({ isActive }) =>
           cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink',
+            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-ink/5 hover:text-ink',
             isActive && 'bg-accent-soft/60 font-medium text-accent-strong hover:bg-accent-soft/60',
             isCollapsed && 'justify-center px-2',
           )
@@ -202,7 +212,7 @@ export function AppShell() {
       </NavLink>
       <button
         className={cn(
-          'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink cursor-pointer',
+          'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-ink/5 hover:text-ink cursor-pointer',
           isCollapsed && 'justify-center px-2',
         )}
         onClick={handleSignOut}
@@ -219,22 +229,23 @@ export function AppShell() {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          'm-3 hidden shrink-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-surface shadow-[0_8px_30px_rgba(29,29,31,0.06)] md:flex',
+          'm-3 hidden shrink-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-surface shadow-e2 md:flex',
           collapsed ? 'w-14' : 'w-56',
         )}
       >
         <div className={cn('flex items-center justify-center border-b border-hairline p-3', collapsed && 'px-0 py-3')}>
           {collapsed ? (
-            <img src={namMark} alt="NAM Builders and Supply Corp." className="h-8 w-8 object-contain" />
+            <img src={markSrc} alt="NAM Builders and Supply Corp." className="h-8 w-8 object-contain" />
           ) : (
-            <img src={namLogo} alt="NAM Builders and Supply Corp." className="w-40" />
+            <img src={logoSrc} alt="NAM Builders and Supply Corp." className="w-40" />
           )}
         </div>
         {renderUserBlock(collapsed)}
+        <SidebarClock collapsed={collapsed} />
         {navLinks}
         <button
           className={cn(
-            'mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-xs text-ink-muted transition-colors duration-150 hover:bg-black/5 hover:text-ink cursor-pointer',
+            'mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-xs text-ink-muted transition-colors duration-150 hover:bg-ink/5 hover:text-ink cursor-pointer',
             collapsed && 'justify-center px-2',
           )}
           onClick={() => setCollapsed((c) => !c)}
@@ -252,12 +263,13 @@ export function AppShell() {
           <div className="fixed inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           <aside className="fixed inset-y-0 left-0 flex w-64 flex-col bg-surface shadow-xl">
             <div className="flex items-center justify-between border-b border-hairline p-3">
-              <img src={namLogo} alt="NAM Builders and Supply Corp." className="w-36" />
+              <img src={logoSrc} alt="NAM Builders and Supply Corp." className="w-36" />
               <button onClick={() => setMobileOpen(false)} className="p-1 text-ink-muted cursor-pointer" aria-label="Close menu">
                 <X className="h-4 w-4" />
               </button>
             </div>
             {renderUserBlock(false)}
+            <SidebarClock collapsed={false} />
             {navLinks}
             {renderFooter(false)}
           </aside>
@@ -269,7 +281,7 @@ export function AppShell() {
           <button className="p-1 text-ink-secondary cursor-pointer" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </button>
-          <img src={namMark} alt="NAM Builders and Supply Corp." className="h-7 w-7 object-contain" />
+          <img src={markSrc} alt="NAM Builders and Supply Corp." className="h-7 w-7 object-contain" />
           <span className="text-sm font-semibold">NAM Supply</span>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">

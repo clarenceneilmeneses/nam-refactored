@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { SettingsProvider } from '@/hooks/useSettings'
 import { AuthProvider } from '@/hooks/useAuth'
 import { AppShell } from '@/components/layout/AppShell'
 import { RequirePermission, RequireSuperAdmin } from '@/components/layout/PermissionGate'
@@ -22,6 +23,7 @@ import { SettingsPage } from '@/features/settings/SettingsPage'
 export default function App() {
   return (
     <ThemeProvider>
+      <SettingsProvider>
       <AuthProvider>
         <BrowserRouter>
         <Routes>
@@ -131,6 +133,7 @@ export default function App() {
         </BrowserRouter>
         <Toaster position="top-right" richColors />
       </AuthProvider>
+      </SettingsProvider>
     </ThemeProvider>
   )
 }

@@ -24,8 +24,14 @@
   --color-good: #1e8e3e;
   --color-good-text: #188038;
   --color-warning: #e37400;
+  --color-warning-text: #a56100;
   --color-serious: #d56e0a;
+  --color-serious-text: #8a3a1a;
   --color-critical: #d93025;
+  --color-critical-text: #c5221f;
+
+  /* Blue-grey supporting text (page-header subtitles) */
+  --color-subtitle: #6b7a9c;
 
   /* Material elevation shadows */
   --shadow-e1: 0 1px 2px 0 rgba(60, 64, 67, 0.15), 0 1px 3px 1px rgba(60, 64, 67, 0.08);
@@ -50,8 +56,13 @@
   --color-good: #81c995;
   --color-good-text: #a8dab5;
   --color-warning: #fdd663;
+  --color-warning-text: #fde293;
   --color-serious: #f6aea9;
+  --color-serious-text: #f6aea9;
   --color-critical: #f28b82;
+  --color-critical-text: #f28b82;
+
+  --color-subtitle: #9aa7c2;
 
   --shadow-e1: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
   --shadow-e2: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
@@ -162,6 +173,17 @@ h1, h2, h3, h4 {
   .fq-upload-box.fq-empty {
     visibility: hidden !important;
   }
+}
+
+/* Fully hidden scrollbar (still scrollable) — used for the sidebar nav */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 /* Slim scrollbar for the dashboard's scrollable chart legends */

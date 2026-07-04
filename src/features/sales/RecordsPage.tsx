@@ -45,7 +45,7 @@ function DueTrackerCell({ sale, today }: { sale: SaleRow; today: string }) {
     <span className="flex flex-col items-start gap-0.5 whitespace-nowrap">
       <span className="text-xs text-ink-secondary">{formatDate(sale.due_date)}</span>
       {badge.kind === 'paid' && (
-        <Badge className="border border-[#0ca30c]/50 bg-transparent text-good-text"><CheckCircle2 className="h-3 w-3" /> Paid</Badge>
+        <Badge className="border border-good/50 bg-transparent text-good-text"><CheckCircle2 className="h-3 w-3" /> Paid</Badge>
       )}
       {badge.kind === 'no-due-date' && <Badge variant="neutral">No Due Date</Badge>}
       {badge.kind === 'overdue' && <Badge variant="critical">Overdue ({badge.days}d)</Badge>}
@@ -307,7 +307,7 @@ export function RecordsPage() {
           id: 'actions',
           header: 'Actions',
           meta: {
-            thClassName: 'sticky right-0 z-10 bg-[#fafaf8] shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.18)]',
+            thClassName: 'sticky right-0 z-10 bg-page shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.18)]',
             tdClassName: 'sticky right-0 bg-inherit shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.18)]',
           },
           cell: ({ row }) => (
@@ -428,8 +428,8 @@ export function RecordsPage() {
           stickyHeader
           rowClassName={(row) => {
             const badge = dueBadge(row, today)
-            if (badge.kind === 'overdue') return 'bg-[#ffe6e6]'
-            if (badge.kind === 'due-soon') return 'bg-[#fff4cc]'
+            if (badge.kind === 'overdue') return 'bg-critical/10'
+            if (badge.kind === 'due-soon') return 'bg-warning/15'
             return 'bg-surface'
           }}
         />

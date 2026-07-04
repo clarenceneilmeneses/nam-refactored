@@ -55,7 +55,7 @@ export function ImportPage() {
                 ? t.id === 'data'
                   ? 'bg-critical/10 text-critical'
                   : 'bg-accent-soft/70 text-accent-strong'
-                : 'text-ink-secondary hover:bg-black/5',
+                : 'text-ink-secondary hover:bg-ink/5',
               tab !== t.id && t.id === 'data' && 'text-critical/80 hover:text-critical',
             )}
             onClick={() => setTab(t.id)}
@@ -94,7 +94,7 @@ function Stepper({ step }: { step: Step }) {
                   ? 'bg-good text-white'
                   : state === 'current'
                     ? 'bg-accent text-white'
-                    : 'bg-black/5 text-ink-muted',
+                    : 'bg-ink/5 text-ink-muted',
               )}
             >
               {state === 'done' ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
@@ -386,7 +386,7 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
                   {validation.issues.length > 100 && <p>…and {validation.issues.length - 100} more skipped</p>}
                   {validation.warnings.slice(0, 100).map((w, i) => (
                     <p key={`w${i}`}>
-                      <span className="font-medium text-[#7a5200]">Warn</span> row {w.row}: {w.message}
+                      <span className="font-medium text-warning-text">Warn</span> row {w.row}: {w.message}
                     </p>
                   ))}
                   {validation.warnings.length > 100 && <p>…and {validation.warnings.length - 100} more warnings</p>}

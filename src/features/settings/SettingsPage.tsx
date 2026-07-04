@@ -1,15 +1,18 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Camera, KeyRound, Loader2, Monitor, Moon, Palette, Sun, UserRound } from 'lucide-react'
+import { Camera, Clock, KeyRound, Loader2, Monitor, Moon, PanelLeftClose, Palette, Sun, UserRound } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAvatarUrl, useUpdatePassword, useUpdateProfileName, useUploadAvatar } from '@/hooks/useProfile'
 import { useTheme, type ThemeMode } from '@/hooks/useTheme'
+import { useSettings, ACCENTS } from '@/hooks/useSettings'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Avatar } from '@/components/shared/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { AvatarCropDialog } from './AvatarCropDialog'
 import { cn } from '@/lib/utils'
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
@@ -22,6 +25,7 @@ export function SettingsPage() {
   const { profile } = useAuth()
   const avatarUrl = useAvatarUrl()
   const { mode, setMode } = useTheme()
+  const { accent, setAccent, clock24, setClock24, startCollapsed, setStartCollapsed } = useSettings()
   const updateName = useUpdateProfileName()
   const updatePassword = useUpdatePassword()
   const uploadAvatar = useUploadAvatar()
@@ -29,6 +33,7 @@ export function SettingsPage() {
   const [fullName, setFullName] = useState(profile?.full_name ?? '')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [cropFile, setCropFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const nameDirty = fullName.trim() !== (profile?.full_name ?? '').trim()
@@ -46,18 +51,23 @@ export function SettingsPage() {
     }
   }
 
-  async function onPickAvatar(file: File | undefined) {
+  function onPickAvatar(file: File | undefined) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
       toast.error('Please choose an image file')
       return
     }
-    if (file.size > 3 * 1024 * 1024) {
-      toast.error('Image must be under 3 MB')
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10 MB')
       return
     }
+    setCropFile(file) // open the cropper; upload happens on confirm
+  }
+
+  async function onCropped(blob: Blob) {
+    setCropFile(null)
     try {
-      await uploadAvatar.mutateAsync(file)
+      await uploadAvatar.mutateAsync(blob)
       toast.success('Profile photo updated')
     } catch (e) {
       toast.error((e as Error).message)
@@ -115,7 +125,10 @@ export function SettingsPage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => onPickAvatar(e.target.files?.[0] ?? undefined)}
+                onChange={(e) => {
+                  onPickAvatar(e.target.files?.[0] ?? undefined)
+                  e.target.value = '' // allow re-picking the same file
+                }}
               />
             </div>
           </div>
@@ -150,27 +163,83 @@ export function SettingsPage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Palette className="h-4 w-4 text-accent" /> Appearance
           </CardTitle>
-          <CardDescription>Choose a theme for this device.</CardDescription>
+          <CardDescription>Choose a theme and accent colour for this device.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-            {THEME_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setMode(opt.value)}
-                className={cn(
-                  'flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-xs font-medium transition-colors cursor-pointer',
-                  mode === opt.value
-                    ? 'border-accent bg-accent-soft text-accent-strong'
-                    : 'border-hairline text-ink-secondary hover:bg-page',
-                )}
-                aria-pressed={mode === opt.value}
-              >
-                <opt.icon className="h-5 w-5" />
-                {opt.label}
-              </button>
-            ))}
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label>Theme</Label>
+            <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setMode(opt.value)}
+                  className={cn(
+                    'flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-xs font-medium transition-colors cursor-pointer',
+                    mode === opt.value
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-hairline text-ink-secondary hover:bg-page',
+                  )}
+                  aria-pressed={mode === opt.value}
+                >
+                  <opt.icon className="h-5 w-5" />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Accent colour</Label>
+            <div className="flex flex-wrap gap-3">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.key}
+                  type="button"
+                  onClick={() => setAccent(a.key)}
+                  title={a.label}
+                  aria-label={a.label}
+                  aria-pressed={accent === a.key}
+                  className={cn(
+                    'h-8 w-8 rounded-full transition-transform cursor-pointer hover:scale-110',
+                    accent === a.key ? 'ring-2 ring-offset-2 ring-offset-surface' : 'ring-1 ring-black/10',
+                  )}
+                  style={{ backgroundColor: a.swatch, ...(accent === a.key ? { '--tw-ring-color': a.swatch } as React.CSSProperties : {}) }}
+                />
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* System preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Monitor className="h-4 w-4 text-accent" /> System
+          </CardTitle>
+          <CardDescription>Defaults for how the app behaves on this device.</CardDescription>
+        </CardHeader>
+        <CardContent className="divide-y divide-hairline">
+          <div className="flex items-center justify-between gap-4 py-3 first:pt-0">
+            <div className="flex items-start gap-3">
+              <Clock className="mt-0.5 h-4 w-4 text-ink-muted" />
+              <div>
+                <p className="text-sm font-medium text-ink">24-hour clock</p>
+                <p className="text-xs text-ink-muted">Show times as 14:30 instead of 2:30 PM.</p>
+              </div>
+            </div>
+            <Switch checked={clock24} onChange={setClock24} label="24-hour clock" />
+          </div>
+          <div className="flex items-center justify-between gap-4 py-3 last:pb-0">
+            <div className="flex items-start gap-3">
+              <PanelLeftClose className="mt-0.5 h-4 w-4 text-ink-muted" />
+              <div>
+                <p className="text-sm font-medium text-ink">Start with sidebar collapsed</p>
+                <p className="text-xs text-ink-muted">Open the app with a slim icon-only sidebar.</p>
+              </div>
+            </div>
+            <Switch checked={startCollapsed} onChange={setStartCollapsed} label="Start with sidebar collapsed" />
           </div>
         </CardContent>
       </Card>
@@ -214,6 +283,10 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {cropFile && (
+        <AvatarCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={onCropped} />
+      )}
     </div>
   )
 }

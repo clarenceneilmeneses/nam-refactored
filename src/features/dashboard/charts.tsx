@@ -366,8 +366,8 @@ export function CategoryDonut({
             key={entry.category}
             type="button"
             onClick={() => onToggle(entry.category)}
-            className={`flex w-full cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left text-xs transition-colors hover:bg-black/5 ${
-              activeCategory === entry.category ? 'bg-black/5 font-medium' : ''
+            className={`flex w-full cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-left text-xs transition-colors hover:bg-ink/5 ${
+              activeCategory === entry.category ? 'bg-ink/5 font-medium' : ''
             }`}
           >
             <span

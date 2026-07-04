@@ -6,12 +6,12 @@ export type StatTone = 'neutral' | 'accent' | 'good' | 'warning' | 'serious' | '
 
 /** Icon + value share the tone colour so they read as one unit. */
 const TONE_TEXT: Record<StatTone, string> = {
-  neutral: 'text-[#5f6368]',
-  accent: 'text-[#1a73e8]',
-  good: 'text-[#188038]',
-  warning: 'text-[#b06000]',
-  serious: 'text-[#c05621]',
-  critical: 'text-[#c5221f]',
+  neutral: 'text-ink-secondary',
+  accent: 'text-accent',
+  good: 'text-good-text',
+  warning: 'text-warning-text',
+  serious: 'text-serious-text',
+  critical: 'text-critical-text',
 }
 
 type StatCardProps = {

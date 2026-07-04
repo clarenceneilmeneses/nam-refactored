@@ -16,6 +16,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/format'
 import type { RoleRow, UserRow } from '@/types/database'
@@ -34,6 +35,13 @@ export function UsersPage() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [sort, setSort] = useState<UserSort>('newest')
+  // Hidden by default — the numeric ID clutters the table; toggle persists.
+  const [showId, setShowId] = useState(() => localStorage.getItem('nam-users-show-id') === 'true')
+
+  const toggleShowId = (on: boolean) => {
+    localStorage.setItem('nam-users-show-id', String(on))
+    setShowId(on)
+  }
 
   const roleNames = useMemo(() => new Map((roles ?? []).map((r) => [r.id, r.name])), [roles])
   const superAdminCount = useMemo(
@@ -110,6 +118,10 @@ export function UsersPage() {
             <option value="name">Name</option>
             <option value="role">Role</option>
           </Select>
+          <label className="flex shrink-0 items-center gap-2 pl-1 text-xs font-medium text-ink-secondary select-none">
+            <Switch checked={showId} onChange={toggleShowId} label="Show ID column" />
+            Show ID
+          </label>
         </div>
       )}
 
@@ -126,7 +138,7 @@ export function UsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-hairline bg-page/60 text-left text-[11px] font-semibold tracking-wide text-ink-muted uppercase">
-                  <th className="px-3 py-2">ID</th>
+                  {showId && <th className="px-3 py-2">ID</th>}
                   <th className="px-3 py-2">Username</th>
                   <th className="px-3 py-2">Full Name</th>
                   <th className="px-3 py-2">Role</th>
@@ -140,7 +152,7 @@ export function UsersPage() {
                   const isLastSuperAdmin = user.role_id === SUPER_ADMIN_ROLE_ID && superAdminCount <= 1
                   return (
                     <tr key={user.id} className="border-b border-hairline last:border-0 hover:bg-page/70">
-                      <td className="px-3 py-2 text-ink-muted tabular-nums">{user.id}</td>
+                      {showId && <td className="px-3 py-2 text-ink-muted tabular-nums">{user.id}</td>}
                       <td className="px-3 py-2 font-medium">
                         <span className="flex items-center gap-2">
                           <Avatar url={user.avatar_url} name={user.full_name} fallback={user.username} className="h-7 w-7 text-[10px]" />
@@ -156,7 +168,7 @@ export function UsersPage() {
                       <td className="px-3 py-2">{user.full_name || '—'}</td>
                       <td className="px-3 py-2">
                         {user.role_id === SUPER_ADMIN_ROLE_ID ? (
-                          <Badge className="bg-[#fab219]/20 text-[#7a5200]">
+                          <Badge className="bg-warning/15 text-warning-text">
                             <Crown className="h-3 w-3" /> {roleNames.get(user.role_id) ?? 'Super Admin'}
                           </Badge>
                         ) : user.role_id != null && roleNames.has(user.role_id) ? (

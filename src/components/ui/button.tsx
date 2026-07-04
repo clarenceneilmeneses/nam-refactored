@@ -9,9 +9,9 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-accent text-white hover:bg-accent-strong',
         outline: 'border border-hairline bg-surface text-ink hover:bg-page',
-        ghost: 'text-ink-secondary hover:bg-black/5 hover:text-ink',
-        destructive: 'bg-critical text-white hover:bg-[#b3271e]',
-        subtle: 'bg-accent-soft text-accent-strong hover:bg-[#d2e3fc]',
+        ghost: 'text-ink-secondary hover:bg-ink/5 hover:text-ink',
+        destructive: 'bg-critical text-white hover:brightness-95',
+        subtle: 'bg-accent-soft text-accent-strong hover:brightness-95',
       },
       size: {
         default: 'h-9 px-5 py-2',
