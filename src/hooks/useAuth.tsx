@@ -21,6 +21,8 @@ type AuthContextValue = {
   hasPermission: (perm: PermissionName) => boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
+  /** Re-fetch the profile row (e.g. after the user edits their own name). */
+  refreshProfile: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -61,11 +64,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     async function load() {
       const uid = session!.user.id
-      const { data: user } = await supabase
+      const CORE_COLS = 'id, username, full_name, role_id, auth_id, created_at, roles(name)'
+      let { data: user, error } = await supabase
         .from('users')
-        .select('id, username, full_name, role_id, auth_id, created_at, roles(name)')
+        .select(`${CORE_COLS}, avatar_url`)
         .eq('auth_id', uid)
         .maybeSingle()
+      if (error) {
+        // e.g. avatar_url not migrated yet (08_profile.sql) — never let a
+        // schema hiccup masquerade as "no profile" and lock the user out.
+        console.error('Profile load failed, retrying without avatar_url:', error.message)
+        const fallback = await supabase.from('users').select(CORE_COLS).eq('auth_id', uid).maybeSingle()
+        user = fallback.data
+      }
       if (cancelled) return
       if (!user) {
         // Signed in via Supabase Auth but not linked to a legacy profile row.
@@ -95,9 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [session])
+  }, [session, reloadKey])
 
   const hasPermission = useCallback((perm: PermissionName) => permissions.has(perm), [permissions])
+
+  const refreshProfile = useCallback(() => setReloadKey((k) => k + 1), [])
 
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true)
@@ -111,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ session, profile, permissions, loading, hasPermission, signIn, signOut }),
-    [session, profile, permissions, loading, hasPermission, signIn, signOut],
+    () => ({ session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile }),
+    [session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

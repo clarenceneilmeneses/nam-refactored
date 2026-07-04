@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/hooks/useTheme'
 import { AuthProvider } from '@/hooks/useAuth'
 import { AppShell } from '@/components/layout/AppShell'
 import { RequirePermission, RequireSuperAdmin } from '@/components/layout/PermissionGate'
@@ -16,11 +17,13 @@ import { UsersPage } from '@/features/admin/UsersPage'
 import { RolesPage } from '@/features/admin/RolesPage'
 import { LogsPage } from '@/features/admin/LogsPage'
 import { AssignmentsPage } from '@/features/admin/AssignmentsPage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<AppShell />}>
@@ -121,10 +124,13 @@ export default function App() {
                 </RequireSuperAdmin>
               }
             />
+            {/* Personal account settings — available to any signed-in user. */}
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
-      </BrowserRouter>
-      <Toaster position="top-right" richColors />
-    </AuthProvider>
+        </BrowserRouter>
+        <Toaster position="top-right" richColors />
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

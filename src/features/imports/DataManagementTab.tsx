@@ -5,8 +5,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
-import { SALES_KEY } from '@/hooks/useSales'
-import { PRODUCTS_KEY } from '@/hooks/useProducts'
+import { SALES_KEY, useSales } from '@/hooks/useSales'
+import { PRODUCTS_KEY, useProducts } from '@/hooks/useProducts'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -25,6 +25,8 @@ type PendingAction = 'month' | 'all-sales' | 'all-products'
 export function DataManagementTab() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
+  const { data: sales } = useSales()
+  const { data: products } = useProducts()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1) // 1-12
   const [year, setYear] = useState(now.getFullYear())
@@ -33,6 +35,13 @@ export function DataManagementTab() {
 
   const years = Array.from({ length: now.getFullYear() - FIRST_DATA_YEAR + 1 }, (_, i) => now.getFullYear() - i)
   const monthName = MONTHS[month - 1]
+
+  // Live counts for context before an irreversible delete.
+  const salesCount = sales?.length ?? null
+  const productsCount = products?.length ?? null
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
+  const monthCount = sales ? sales.filter((s) => (s.date ?? '').startsWith(monthPrefix)).length : null
+  const countLabel = (n: number | null) => (n === null ? '' : ` · ${n.toLocaleString()} row${n === 1 ? '' : 's'}`)
 
   async function deleteSalesByMonth() {
     const start = `${year}-${String(month).padStart(2, '0')}-01`
@@ -44,7 +53,7 @@ export function DataManagementTab() {
       .lt('date', end)
     if (error) throw new Error(error.message)
     queryClient.invalidateQueries({ queryKey: SALES_KEY })
-    logAction(profile?.id, 'Deleted Sales by Month', `🔴 Deleted ${count ?? 0} sales record(s) for ${monthName} ${year}`)
+    logAction(profile?.id, 'Deleted Sales by Month', `Deleted ${count ?? 0} sales record(s) for ${monthName} ${year}`)
     return `Deleted ${(count ?? 0).toLocaleString()} sales record(s) for ${monthName} ${year}`
   }
 
@@ -52,7 +61,7 @@ export function DataManagementTab() {
     const { count, error } = await supabase.from('sales').delete({ count: 'exact' }).gte('id', 0)
     if (error) throw new Error(error.message)
     queryClient.invalidateQueries({ queryKey: SALES_KEY })
-    logAction(profile?.id, 'Cleared All Sales Data', `🔴 Cleared ALL sales data (${count ?? 0} rows)`)
+    logAction(profile?.id, 'Cleared All Sales Data', `Cleared ALL sales data (${count ?? 0} rows)`)
     return `Cleared ALL sales data (${(count ?? 0).toLocaleString()} rows)`
   }
 
@@ -60,7 +69,7 @@ export function DataManagementTab() {
     const { count, error } = await supabase.from('products').delete({ count: 'exact' }).gte('id', 0)
     if (error) throw new Error(error.message)
     queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
-    logAction(profile?.id, 'Cleared All Products', `🔴 Cleared ALL products (${count ?? 0} rows)`)
+    logAction(profile?.id, 'Cleared All Products', `Cleared ALL products (${count ?? 0} rows)`)
     return `Cleared ALL products (${(count ?? 0).toLocaleString()} rows)`
   }
 
@@ -112,9 +121,16 @@ export function DataManagementTab() {
               ))}
             </Select>
           </div>
-          <Button variant="destructive" onClick={() => setPending('month')}>
-            <Trash2 className="h-4 w-4" /> Delete {monthName} {year}…
-          </Button>
+          <div className="flex flex-col gap-1">
+            <Button variant="destructive" onClick={() => setPending('month')}>
+              <Trash2 className="h-4 w-4" /> Delete {monthName} {year}…
+            </Button>
+            {monthCount !== null && (
+              <span className="text-[11px] text-ink-muted tabular-nums">
+                {monthCount.toLocaleString()} record{monthCount === 1 ? '' : 's'} in this month
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -129,10 +145,10 @@ export function DataManagementTab() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button variant="destructive" onClick={() => setPending('all-sales')}>
-            <Trash2 className="h-4 w-4" /> Clear ALL Sales Data…
+            <Trash2 className="h-4 w-4" /> Clear ALL Sales Data{countLabel(salesCount)}…
           </Button>
           <Button variant="destructive" onClick={() => setPending('all-products')}>
-            <Trash2 className="h-4 w-4" /> Clear ALL Products…
+            <Trash2 className="h-4 w-4" /> Clear ALL Products{countLabel(productsCount)}…
           </Button>
         </CardContent>
       </Card>

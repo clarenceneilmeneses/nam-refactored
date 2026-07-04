@@ -7,6 +7,7 @@ import { useUsers } from '@/hooks/useAdmin'
 import { useAssignCompany, useCompanyAssignments, useDeleteAssignment } from '@/hooks/useCompanyAssignments'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { PageHeader } from '@/components/shared/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -65,17 +66,15 @@ export function AssignmentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Account-Manager Assignments</h1>
-          <p className="text-xs text-ink-muted">
-            Map companies to account managers — this drives the dashboard’s manager chart, colors, and drilldowns.
-          </p>
-        </div>
-        <Link to="/" className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
-        </Link>
-      </div>
+      <PageHeader
+        title="Account-Manager Assignments"
+        subtitle="Map companies to account managers — this drives the dashboard’s manager chart, colors, and drilldowns."
+        actions={
+          <Link to="/" className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
+          </Link>
+        }
+      />
 
       <Card>
         <CardHeader>

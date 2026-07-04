@@ -3,6 +3,7 @@ import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { Search } from 'lucide-react'
 import { useSystemLogs, useUsers } from '@/hooks/useAdmin'
 import { DataTable } from '@/components/shared/DataTable'
+import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -83,12 +84,10 @@ export function LogsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">System Logs</h1>
-        <p className="text-xs text-ink-muted">
-          {(logs ?? []).length.toLocaleString()} audit entries (read-only, Asia/Manila time)
-        </p>
-      </div>
+      <PageHeader
+        title="System Logs"
+        subtitle={`${(logs ?? []).length.toLocaleString()} audit entries (read-only, Asia/Manila time)`}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />

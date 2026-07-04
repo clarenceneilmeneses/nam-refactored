@@ -1,28 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Google/Material — Roboto + Google Sans-style neutrals */
+  --font-sans: "Roboto", "Google Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Chrome & ink (light internal-tool theme, Apple-gray neutrals) */
+  /* Chrome & ink (Google Material greys) */
   --color-surface: #ffffff;
-  --color-page: #f5f5f7;
-  --color-ink: #1d1d1f;
-  --color-ink-secondary: #515154;
-  --color-ink-muted: #86868b;
-  --color-hairline: #e3e3e8;
-  --color-baseline: #c7c7cc;
+  --color-page: #f8f9fa;
+  --color-ink: #202124;
+  --color-ink-secondary: #5f6368;
+  --color-ink-muted: #80868b;
+  --color-hairline: #dadce0;
+  --color-baseline: #bdc1c6;
 
-  /* Brand accent (categorical slot 1) */
-  --color-accent: #2a78d6;
-  --color-accent-strong: #1c5cab;
-  --color-accent-soft: #d6e6fa;
+  /* Brand accent (Google Blue) */
+  --color-accent: #1a73e8;
+  --color-accent-strong: #1557b0;
+  --color-accent-soft: #e8f0fe;
 
-  /* Status (reserved, never series colors) — desaturated but distinguishable */
-  --color-good: #3a9a58;
-  --color-good-text: #206a3c;
-  --color-warning: #dfa32b;
-  --color-serious: #d97f5c;
-  --color-critical: #c74e4e;
+  /* Status (Google Material semantic colors) */
+  --color-good: #1e8e3e;
+  --color-good-text: #188038;
+  --color-warning: #e37400;
+  --color-serious: #d56e0a;
+  --color-critical: #d93025;
+
+  /* Material elevation shadows */
+  --shadow-e1: 0 1px 2px 0 rgba(60, 64, 67, 0.15), 0 1px 3px 1px rgba(60, 64, 67, 0.08);
+  --shadow-e2: 0 1px 2px 0 rgba(60, 64, 67, 0.2), 0 2px 6px 2px rgba(60, 64, 67, 0.1);
+}
+
+/* Dark theme — overrides the @theme tokens so token-based utilities flip.
+   Applied by ThemeProvider via <html data-theme="dark">. */
+:root[data-theme='dark'] {
+  --color-surface: #2a2b2e;
+  --color-page: #202124;
+  --color-ink: #e8eaed;
+  --color-ink-secondary: #bdc1c6;
+  --color-ink-muted: #9aa0a6;
+  --color-hairline: #3c4043;
+  --color-baseline: #5f6368;
+
+  --color-accent: #8ab4f8;
+  --color-accent-strong: #aecbfa;
+  --color-accent-soft: #283b52;
+
+  --color-good: #81c995;
+  --color-good-text: #a8dab5;
+  --color-warning: #fdd663;
+  --color-serious: #f6aea9;
+  --color-critical: #f28b82;
+
+  --shadow-e1: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --shadow-e2: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
 }
 
 html, body, #root {
@@ -42,6 +74,22 @@ h1, h2, h3, h4 {
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* Google Material Symbols (Rounded) — used for stat-card icons */
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 40;
 }
 
 /* Formal quotation document (FormalQuotePreview) */

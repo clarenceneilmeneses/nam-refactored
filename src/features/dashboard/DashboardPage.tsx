@@ -1,19 +1,12 @@
-import { useState, type ComponentType, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  AlertTriangle,
-  Coins,
-  ReceiptText,
-  Settings,
-  Target,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react'
+import { Settings, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { formatPeso, formatPesoWhole } from '@/lib/format'
 import {
   NO_DRILLS,
@@ -26,7 +19,7 @@ import {
 import { useDashboardData } from './useDashboardData'
 import { DrillChips, FilterBar } from './FilterBar'
 import { SalesMatrix } from './SalesMatrix'
-import { GREEN, INDIGO, RED, SKY } from './palette'
+import { RED, SKY } from './palette'
 import {
   CategoryDonut,
   CollectionDonut,
@@ -36,9 +29,6 @@ import {
   NamedTotalsBarChart,
   SalesPerformanceChart,
 } from './charts'
-
-const BLUE = '#3b82f6'
-const YELLOW_KPI = '#f59e0b'
 
 export function DashboardPage() {
   const { profile } = useAuth()
@@ -61,10 +51,10 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Executive Dashboard</h1>
-        <p className="text-xs text-ink-muted">Live — updates as sales are added or edited. Click bars and slices to cross-filter.</p>
-      </div>
+      <PageHeader
+        title="Executive Dashboard"
+        subtitle="Live — updates as sales are added or edited. Click bars and slices to cross-filter."
+      />
 
       <FilterBar
         filters={filters}
@@ -80,35 +70,61 @@ export function DashboardPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard accent={INDIGO} icon={TrendingUp} label="Total Revenue" value={formatPeso(t.revenue)} loading={isLoading}>
-          {data.growth && <GrowthBadge growth={data.growth.revenue} />}
-          <div className="mt-1">
-            <TargetBadge percent={data.target.percent} amount={data.target.amount} />
-          </div>
-        </KpiCard>
-        <KpiCard accent={GREEN} icon={Wallet} label="Net Profit" value={formatPeso(t.profit)} loading={isLoading}>
-          {data.growth && <GrowthBadge growth={data.growth.profit} />}
-          <p className="mt-1 text-xs text-ink-secondary">Margin: {t.margin.toFixed(1)}%</p>
-        </KpiCard>
-        <KpiCard accent={BLUE} icon={Coins} label="Total Collected" value={formatPeso(t.collected)} loading={isLoading}>
-          <p className="mt-1 text-xs font-medium" style={{ color: RED }}>
-            Unpaid: {formatPeso(t.unpaid)}
-          </p>
-        </KpiCard>
-        <KpiCard accent={YELLOW_KPI} icon={ReceiptText} label="Avg. Order Value" value={formatPeso(t.avgOrder)} loading={isLoading}>
-          <p className="mt-1 text-xs text-ink-secondary">{t.orders.toLocaleString()} Orders</p>
-        </KpiCard>
-        <KpiCard
-          accent={RED}
-          icon={AlertTriangle}
+        <StatCard
+          tone="accent"
+          icon="trending_up"
+          label="Total Revenue"
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.revenue)}
+          hint={
+            !isLoading && (
+              <>
+                {data.growth && <GrowthBadge growth={data.growth.revenue} />}
+                <div className="mt-1">
+                  <TargetBadge percent={data.target.percent} amount={data.target.amount} />
+                </div>
+              </>
+            )
+          }
+        />
+        <StatCard
+          tone="good"
+          icon="account_balance_wallet"
+          label="Net Profit"
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.profit)}
+          hint={
+            !isLoading && (
+              <>
+                {data.growth && <GrowthBadge growth={data.growth.profit} />}
+                <p className="mt-1 text-xs text-ink-secondary">Margin: {t.margin.toFixed(1)}%</p>
+              </>
+            )
+          }
+        />
+        <StatCard
+          tone="accent"
+          icon="payments"
+          label="Total Collected"
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.collected)}
+          hint={!isLoading && <p className="text-xs font-medium text-critical">Unpaid: {formatPeso(t.unpaid)}</p>}
+        />
+        <StatCard
+          tone="warning"
+          icon="receipt_long"
+          label="Avg. Order Value"
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.avgOrder)}
+          hint={!isLoading && <p className="text-xs text-ink-secondary">{t.orders.toLocaleString()} Orders</p>}
+        />
+        <StatCard
+          tone="critical"
+          icon="warning"
           label="Stock Alerts"
-          value={stockAlerts.toLocaleString()}
-          loading={productsLoading}
-        >
-          <Link to="/products" className="mt-1 inline-block text-xs font-medium text-accent-strong hover:underline">
-            View Inventory →
-          </Link>
-        </KpiCard>
+          value={productsLoading ? <Skeleton className="h-7 w-16" /> : stockAlerts.toLocaleString()}
+          hint={
+            <Link to="/products" className="font-medium text-accent-strong hover:underline">
+              View Inventory →
+            </Link>
+          }
+        />
       </div>
 
       {/* Charts */}
@@ -217,45 +233,6 @@ export function DashboardPage() {
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-function KpiCard({
-  accent,
-  icon: Icon,
-  label,
-  value,
-  loading,
-  children,
-}: {
-  accent: string
-  icon: ComponentType<{ className?: string; style?: React.CSSProperties }>
-  label: string
-  value: string
-  loading: boolean
-  children?: ReactNode
-}) {
-  return (
-    <Card
-      className="relative overflow-hidden border-l-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"
-      style={{ borderLeftColor: accent }}
-    >
-      <CardContent className="relative min-h-[92px] p-4">
-        <p className="text-[11px] font-medium tracking-wide text-ink-muted uppercase">{label}</p>
-        {loading ? (
-          <Skeleton className="mt-1 h-7 w-32" />
-        ) : (
-          <>
-            <p className="mt-0.5 truncate text-2xl font-bold tabular-nums">{value}</p>
-            {children}
-          </>
-        )}
-        <Icon
-          className="pointer-events-none absolute -right-2 -bottom-3 h-16 w-16 opacity-10"
-          style={{ color: accent }}
-        />
-      </CardContent>
-    </Card>
   )
 }
 

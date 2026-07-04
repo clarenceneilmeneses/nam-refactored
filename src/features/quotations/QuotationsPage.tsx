@@ -1,24 +1,6 @@
-import { useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  Bookmark,
-  Building2,
-  CalendarDays,
-  CheckCheck,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  FileSignature,
-  Merge,
-  Pencil,
-  Plus,
-  Printer,
-  RotateCcw,
-  Search,
-  Stamp,
-  Trash2,
-} from 'lucide-react'
+import { Plus } from 'lucide-react'
 import {
   QUOTATIONS_KEY,
   useApproveQuotation,
@@ -33,9 +15,9 @@ import { useSales } from '@/hooks/useSales'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatPeso, toISODate } from '@/lib/format'
@@ -46,51 +28,19 @@ import { FormalQuotePreview } from './FormalQuotePreview'
 import { EditItemDialog } from './EditItemDialog'
 import { EditGroupDialog } from './EditGroupDialog'
 import { MergeClientsDialog } from './MergeClientsDialog'
-
-type RefGroup = {
-  quoteRef: string
-  company: string | null
-  date: string
-  poNumber: string | null
-  paymentTerm: string | null
-  remarks: string | null
-  items: QuotationRow[]
-  actionCount: number
-}
-
-type CompanyGroup = {
-  company: string
-  refs: RefGroup[]
-  actionCount: number
-  itemCount: number
-}
-
-type Segment = 'all' | 'action' | 'converted'
-
-function statusOf(q: QuotationRow): string {
-  return q.status ?? 'Pending'
-}
-
-function StatusPill({ status }: { status: string }) {
-  switch (status) {
-    case 'Approved':
-      return <Badge variant="accent">Approved</Badge>
-    case 'Reserved':
-      return <Badge variant="critical">Reserved</Badge>
-    case 'Converted':
-      return <Badge variant="good">Converted</Badge>
-    default:
-      return <Badge variant="neutral">{status}</Badge>
-  }
-}
-
-function longDate(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMMM d, yyyy')
-  } catch {
-    return iso
-  }
-}
+import { ClientRail } from './ClientRail'
+import { ClientDetail } from './ClientDetail'
+import {
+  buildCompanyGroups,
+  daysBetween,
+  rollupCompany,
+  STALE_DAYS,
+  statusOf,
+  type QuotationActions,
+  type RefGroup,
+  type Segment,
+  type SortMode,
+} from './quotationModel'
 
 export function QuotationsPage() {
   const { data: quotations, isLoading, error } = useQuotations()
@@ -106,7 +56,9 @@ export function QuotationsPage() {
 
   const [search, setSearch] = useState('')
   const [segment, setSegment] = useState<Segment>('all')
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [sort, setSort] = useState<SortMode>('recent')
+  const [selected, setSelected] = useState<string | null>(null)
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
   const [workspace, setWorkspace] = useState<WorkspaceMode | null>(null)
   const [mergeOpen, setMergeOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<QuotationRow | null>(null)
@@ -117,65 +69,37 @@ export function QuotationsPage() {
   const [confirmRemove, setConfirmRemove] = useState<QuotationRow | null>(null)
   const [confirmDeleteGroup, setConfirmDeleteGroup] = useState<RefGroup | null>(null)
 
-  // Whole-table status stats for the cards.
+  // Touch devices keep per-item actions always visible (no hover to reveal on).
+  const [coarse] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches,
+  )
+
+  // Whole-table status stats for the cards (unchanged math).
   const stats = useMemo(() => {
     const sums = {
-      Pending: { count: 0, amount: 0 },
+      Pending: { count: 0, amount: 0, staleAmount: 0 },
       Approved: { count: 0, amount: 0 },
       Reserved: { count: 0, amount: 0 },
       Converted: { count: 0, amount: 0 },
     }
+    const now = new Date()
     for (const q of quotations ?? []) {
       const s = statusOf(q)
       const bucket = s in sums ? sums[s as keyof typeof sums] : sums.Pending
       bucket.count += 1
       bucket.amount += q.total_amount ?? 0
+      if (bucket === sums.Pending && daysBetween(q.date, now) >= STALE_DAYS) sums.Pending.staleAmount += q.total_amount ?? 0
     }
     return sums
   }, [quotations])
 
-  // Company → quote_ref accordion groups (rows come date desc, id desc).
-  const groups = useMemo<CompanyGroup[]>(() => {
-    const companies = new Map<string, Map<string, RefGroup>>()
-    for (const q of quotations ?? []) {
-      const companyKey = q.company?.trim() || '(No company)'
-      const refKey = q.quote_ref?.trim() || `(no ref) #${q.id}`
-      let refs = companies.get(companyKey)
-      if (!refs) {
-        refs = new Map()
-        companies.set(companyKey, refs)
-      }
-      let group = refs.get(refKey)
-      if (!group) {
-        group = {
-          quoteRef: refKey,
-          company: q.company,
-          date: q.date,
-          poNumber: q.po_number,
-          paymentTerm: q.payment_term,
-          remarks: q.remarks,
-          items: [],
-          actionCount: 0,
-        }
-        refs.set(refKey, group)
-      }
-      group.items.push(q)
-      if (statusOf(q) !== 'Converted') group.actionCount += 1
-    }
-    return [...companies.entries()].map(([company, refs]) => {
-      const refList = [...refs.values()]
-      return {
-        company,
-        refs: refList,
-        actionCount: refList.reduce((n, r) => n + r.actionCount, 0),
-        itemCount: refList.reduce((n, r) => n + r.items.length, 0),
-      }
-    })
-  }, [quotations])
+  const groups = useMemo(() => buildCompanyGroups(quotations), [quotations])
 
+  // Search + segment filter, then sort. Filtering re-rolls each company from its
+  // surviving refs so badges/values reflect the filtered view.
   const visibleGroups = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const result: CompanyGroup[] = []
+    const result = []
     for (const group of groups) {
       const companyHit = q !== '' && group.company.toLowerCase().includes(q)
       let refs = group.refs
@@ -187,26 +111,33 @@ export function QuotationsPage() {
       if (segment === 'action') refs = refs.filter((r) => r.actionCount > 0)
       else if (segment === 'converted') refs = refs.filter((r) => r.actionCount === 0)
       if (refs.length === 0) continue
-      result.push({
-        company: group.company,
-        refs,
-        actionCount: refs.reduce((n, r) => n + r.actionCount, 0),
-        itemCount: refs.reduce((n, r) => n + r.items.length, 0),
-      })
+      result.push(refs === group.refs ? group : rollupCompany(group.company, refs))
     }
+    result.sort((a, b) => {
+      if (sort === 'name') return a.company.localeCompare(b.company)
+      if (sort === 'value') return b.openValue - a.openValue
+      return b.latestDate.localeCompare(a.latestDate) // recent
+    })
     return result
-  }, [groups, search, segment])
+  }, [groups, search, segment, sort])
 
   const searching = search.trim() !== ''
 
-  function toggleCompany(company: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(company)) next.delete(company)
-      else next.add(company)
-      return next
-    })
-  }
+  // Keep a valid selection: default to / fall back to the first visible client.
+  useEffect(() => {
+    if (visibleGroups.length === 0) {
+      if (selected !== null) setSelected(null)
+      return
+    }
+    if (!selected || !visibleGroups.some((g) => g.company === selected)) {
+      setSelected(visibleGroups[0].company)
+    }
+  }, [visibleGroups, selected])
+
+  const selectedGroup = useMemo(
+    () => visibleGroups.find((g) => g.company === selected) ?? null,
+    [visibleGroups, selected],
+  )
 
   // Client master first, latest sales row as fallback (clients table may be empty).
   function clientAddress(company: string | null): string | null {
@@ -228,245 +159,123 @@ export function QuotationsPage() {
     }
   }
 
+  const actions: QuotationActions = {
+    onAddItem: (ref) =>
+      setWorkspace({
+        kind: 'addItem',
+        group: {
+          company: ref.company,
+          quoteRef: ref.quoteRef,
+          poNumber: ref.poNumber,
+          paymentTerm: ref.paymentTerm,
+          remarks: ref.remarks,
+        },
+      }),
+    onEditGroup: (ref) => setEditingGroup(ref),
+    onPrintGroup: (ref) => setPrintGroup(ref),
+    onDeleteGroup: (ref) => setConfirmDeleteGroup(ref),
+    onBuyAgain: (q) =>
+      setWorkspace({
+        kind: 'buyAgain',
+        company: q.company,
+        item: {
+          item: q.item ?? '',
+          category: q.category,
+          quantity: q.quantity_requested ?? 1,
+          suppliers_price: q.suppliers_price ?? 0,
+          nam_unit_price: q.nam_unit_price ?? 0,
+        },
+      }),
+    onEditItem: (q) => setEditingItem(q),
+    onToggleReserve: (q) =>
+      run(() => toggleReserve.mutateAsync(q), q.status === 'Reserved' ? 'Reservation released' : 'Stock reserved'),
+    onApprove: (q) => setConfirmApprove(q),
+    onFinalize: (q) => setConfirmFinalize(q),
+    onRemove: (q) => setConfirmRemove(q),
+    reserveBusy: toggleReserve.isPending,
+    revealOnHover: !coarse,
+  }
+
+  function selectClient(company: string) {
+    setSelected(company)
+    setMobileView('detail')
+  }
+
   if (error) return <p className="text-sm text-critical">Couldn’t load quotations: {(error as Error).message}</p>
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Quotations</h1>
-          <p className="text-xs text-ink-muted">{(quotations ?? []).length.toLocaleString()} quotation lines across {groups.length} clients</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="bg-[#fab219] text-[#3a2b00] hover:bg-[#e0a017]" onClick={() => setMergeOpen(true)}>
-            <Merge className="h-3.5 w-3.5" /> Merge Duplicate Clients
-          </Button>
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      {/* Header */}
+      <PageHeader
+        title="Quotations"
+        subtitle={`${(quotations ?? []).length.toLocaleString()} quotation lines across ${groups.length} clients`}
+        actions={
           <Button size="sm" onClick={() => setWorkspace({ kind: 'create' })}>
             <Plus className="h-3.5 w-3.5" /> Create New Quotation
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Status stat cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard icon={<Clock className="h-4 w-4 text-[#b47d00]" />} iconBg="bg-[#fab219]/15" label="Pending Review" count={stats.Pending.count} amount={stats.Pending.amount} />
-        <StatCard icon={<FileSignature className="h-4 w-4 text-accent" />} iconBg="bg-accent-soft" label="Approved & Ready" count={stats.Approved.count} amount={stats.Approved.amount} />
-        <StatCard icon={<Bookmark className="h-4 w-4 text-critical" />} iconBg="bg-[#d03b3b]/10" label="Reserved Stock" count={stats.Reserved.count} amount={stats.Reserved.amount} />
         <StatCard
-          icon={<CheckCheck className="h-4 w-4 text-good-text" />}
-          iconBg="bg-[#0ca30c]/10"
-          label="Converted to Sales"
-          count={stats.Converted.count}
-          amount={stats.Converted.amount}
-          className="border-l-4 border-l-good"
-        />
-      </div>
-
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />
-          <Input className="w-72 pl-8" placeholder="Search companies, refs or items…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <div className="flex overflow-hidden rounded-md border border-hairline">
-          {(
-            [
-              ['all', 'All Quotes'],
-              ['action', 'Action Needed'],
-              ['converted', 'Converted'],
-            ] as Array<[Segment, string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium cursor-pointer',
-                segment === value ? 'bg-accent text-white' : 'bg-surface text-ink-secondary hover:bg-page',
+          tone="warning"
+          icon="schedule"
+          label="Pending Review"
+          value={stats.Pending.count.toLocaleString()}
+          hint={
+            <>
+              {formatPeso(stats.Pending.amount)}
+              {stats.Pending.staleAmount > 0 && (
+                <span className="mt-0.5 block text-[#b06000]">{formatPeso(stats.Pending.staleAmount)} older than 90 days</span>
               )}
-              onClick={() => setSegment(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+            </>
+          }
+        />
+        <StatCard tone="accent" icon="verified" label="Approved & Ready" value={stats.Approved.count.toLocaleString()} hint={formatPeso(stats.Approved.amount)} />
+        <StatCard tone="critical" icon="bookmark" label="Reserved Stock" value={stats.Reserved.count.toLocaleString()} hint={formatPeso(stats.Reserved.amount)} />
+        <StatCard tone="good" icon="task_alt" label="Converted to Sales" value={stats.Converted.count.toLocaleString()} hint={formatPeso(stats.Converted.amount)} />
       </div>
 
-      {/* Grouped accordion */}
+      {/* Master–detail */}
       {isLoading ? (
         <TableSkeleton />
-      ) : visibleGroups.length === 0 ? (
-        <EmptyState title="No quotations found" description={searching ? 'Try a different search.' : 'Create a new quotation to get started.'} />
       ) : (
-        <div className="space-y-3">
-          {visibleGroups.map((group) => {
-            const isOpen = searching || expanded.has(group.company)
-            return (
-              <div key={group.company} className="overflow-hidden rounded-lg border border-hairline bg-surface">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-page cursor-pointer"
-                  onClick={() => toggleCompany(group.company)}
-                >
-                  {isOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-ink-muted" />}
-                  <Building2 className="h-4 w-4 shrink-0 text-accent" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{group.company}</span>
-                  {group.actionCount > 0 && <Badge variant="warning">{group.actionCount} Action Required</Badge>}
-                  <Badge variant="neutral">{group.itemCount} Items Total</Badge>
-                </button>
-
-                {isOpen && (
-                  <div className="space-y-3 border-t border-hairline p-3">
-                    {group.refs.map((ref) => (
-                      <div key={ref.quoteRef} className="rounded-md border border-hairline">
-                        <div className="flex flex-wrap items-center gap-2 border-b border-hairline bg-page px-3 py-2">
-                          <span className="text-sm font-semibold text-accent">Ref: {ref.quoteRef}</span>
-                          <Badge variant="neutral">
-                            <CalendarDays className="h-3 w-3" /> {longDate(ref.date)}
-                          </Badge>
-                          {ref.poNumber && <Badge variant="neutral">Inquiry #: {ref.poNumber}</Badge>}
-                          <span className="flex-1" />
-                          <Button
-                            variant="subtle"
-                            size="sm"
-                            onClick={() =>
-                              setWorkspace({
-                                kind: 'addItem',
-                                group: {
-                                  company: ref.company,
-                                  quoteRef: ref.quoteRef,
-                                  poNumber: ref.poNumber,
-                                  paymentTerm: ref.paymentTerm,
-                                  remarks: ref.remarks,
-                                },
-                              })
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Add Item
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setEditingGroup(ref)}>
-                            <Pencil className="h-3.5 w-3.5" /> Edit Group
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setPrintGroup(ref)}>
-                            <Printer className="h-3.5 w-3.5" /> Print Formal Quote
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Delete group"
-                            aria-label={`Delete group ${ref.quoteRef}`}
-                            onClick={() => setConfirmDeleteGroup(ref)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-critical" />
-                          </Button>
-                        </div>
-
-                        <ul className="divide-y divide-hairline">
-                          {ref.items.map((q) => {
-                            const status = statusOf(q)
-                            const converted = status === 'Converted'
-                            return (
-                              <li key={q.id} className={cn('flex flex-wrap items-center gap-2 px-3 py-2', converted && 'opacity-50')}>
-                                <span className="min-w-0 flex-1 truncate text-sm" title={q.item ?? ''}>
-                                  {q.item || '—'}
-                                </span>
-                                <span className="text-xs text-ink-muted tabular-nums">×{q.quantity_requested ?? 0}</span>
-                                <span className="text-xs text-ink-secondary tabular-nums whitespace-nowrap">
-                                  {formatPeso(q.nam_unit_price)} / <strong>{formatPeso(q.total_amount)}</strong>
-                                </span>
-                                <StatusPill status={status} />
-                                <span className="flex items-center gap-0.5">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    title="Buy Again — new quote with this item"
-                                    aria-label="Buy again"
-                                    onClick={() =>
-                                      setWorkspace({
-                                        kind: 'buyAgain',
-                                        company: q.company,
-                                        item: {
-                                          item: q.item ?? '',
-                                          category: q.category,
-                                          quantity: q.quantity_requested ?? 1,
-                                          suppliers_price: q.suppliers_price ?? 0,
-                                          nam_unit_price: q.nam_unit_price ?? 0,
-                                        },
-                                      })
-                                    }
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                  </Button>
-                                  {!converted && (
-                                    <>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit item" aria-label="Edit item" onClick={() => setEditingItem(q)}>
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </Button>
-                                      {(status === 'Pending' || status === 'Reserved') && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className={cn('h-7 w-7', status === 'Reserved' && 'bg-critical text-white hover:bg-[#b32f2f] hover:text-white')}
-                                          title={status === 'Reserved' ? 'Release reservation' : 'Reserve stock'}
-                                          aria-label="Toggle reservation"
-                                          disabled={toggleReserve.isPending}
-                                          onClick={() =>
-                                            run(
-                                              () => toggleReserve.mutateAsync(q),
-                                              status === 'Reserved' ? 'Reservation released' : 'Stock reserved',
-                                            )
-                                          }
-                                        >
-                                          <Bookmark className={cn('h-3.5 w-3.5', status === 'Reserved' && 'fill-current')} />
-                                        </Button>
-                                      )}
-                                      {(status === 'Pending' || status === 'Reserved') && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7"
-                                          title="Approve — deducts stock"
-                                          aria-label="Approve"
-                                          onClick={() => setConfirmApprove(q)}
-                                        >
-                                          <Stamp className="h-3.5 w-3.5 text-accent" />
-                                        </Button>
-                                      )}
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        title="Finalize — convert to sale"
-                                        aria-label="Finalize"
-                                        onClick={() => setConfirmFinalize(q)}
-                                      >
-                                        <CheckCheck className="h-3.5 w-3.5 text-good-text" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        title="Remove item"
-                                        aria-label="Remove item"
-                                        onClick={() => setConfirmRemove(q)}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5 text-critical" />
-                                      </Button>
-                                    </>
-                                  )}
-                                </span>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[320px_1fr]">
+          <div className={cn('min-h-0', mobileView === 'detail' && 'hidden lg:block')}>
+            <ClientRail
+              groups={visibleGroups}
+              selected={selected}
+              onSelect={selectClient}
+              search={search}
+              onSearch={setSearch}
+              segment={segment}
+              onSegment={setSegment}
+              sort={sort}
+              onSort={setSort}
+              searching={searching}
+              onMerge={() => setMergeOpen(true)}
+            />
+          </div>
+          <div className={cn('min-h-0', mobileView === 'list' && 'hidden lg:block')}>
+            {selectedGroup ? (
+              <ClientDetail
+                group={selectedGroup}
+                address={clientAddress(selectedGroup.company)}
+                searching={searching}
+                actions={actions}
+                onNewQuote={(company) => setWorkspace({ kind: 'create', company })}
+                onBack={() => setMobileView('list')}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-lg border border-hairline bg-surface">
+                <EmptyState
+                  title="No quotations found"
+                  description={searching ? 'Try a different search.' : 'Create a new quotation to get started.'}
+                />
               </div>
-            )
-          })}
+            )}
+          </div>
         </div>
       )}
 
@@ -560,33 +369,6 @@ export function QuotationsPage() {
           )
         }}
       />
-    </div>
-  )
-}
-
-function StatCard({
-  icon,
-  iconBg,
-  label,
-  count,
-  amount,
-  className,
-}: {
-  icon: React.ReactNode
-  iconBg: string
-  label: string
-  count: number
-  amount: number
-  className?: string
-}) {
-  return (
-    <div className={cn('flex items-center gap-3 rounded-lg border border-hairline bg-surface p-3', className)}>
-      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', iconBg)}>{icon}</span>
-      <div className="min-w-0">
-        <p className="truncate text-xs text-ink-muted">{label}</p>
-        <p className="text-lg leading-tight font-semibold tabular-nums">{count.toLocaleString()}</p>
-        <p className="truncate text-xs text-ink-secondary tabular-nums">{formatPeso(amount)}</p>
-      </div>
     </div>
   )
 }

@@ -6,11 +6,14 @@ import { useDeleteProduct, useProducts, PRODUCTS_KEY } from '@/hooks/useProducts
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { DataTable } from '@/components/shared/DataTable'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { formatPeso } from '@/lib/format'
 import type { ProductRow } from '@/types/database'
 import { ProductFormDialog } from './ProductFormDialog'
@@ -18,15 +21,23 @@ import { MergeProductsDialog } from './MergeProductsDialog'
 
 const col = createColumnHelper<ProductRow>()
 
+type StockView = '' | 'low' | 'out' | 'draft'
+
 function StockBadge({ product }: { product: ProductRow }) {
   const stock = product.current_stock ?? 0
-  const low = stock <= (product.reorder_level ?? 10)
-  if (!low) return <Badge variant="neutral">{stock}</Badge>
-  return (
-    <Badge variant="critical">
-      <AlertTriangle className="h-3 w-3" /> {stock} left
-    </Badge>
-  )
+  if (stock === 0)
+    return (
+      <Badge variant="critical">
+        <AlertTriangle className="h-3 w-3" /> Out
+      </Badge>
+    )
+  if (stock <= (product.reorder_level ?? 10))
+    return (
+      <Badge variant="warning">
+        <AlertTriangle className="h-3 w-3" /> {stock} low
+      </Badge>
+    )
+  return <Badge variant="neutral">{stock}</Badge>
 }
 
 /** Checkbox that supports the indeterminate visual state (header select-all). */
@@ -64,7 +75,7 @@ export function ProductsPage() {
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [view, setView] = useState('') // '' | low | draft
+  const [view, setView] = useState<StockView>('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<ProductRow | null>(null)
@@ -82,10 +93,24 @@ export function ProductsPage() {
         (p) =>
           (!category || p.category_code === category) &&
           (view !== 'low' || (p.current_stock ?? 0) <= (p.reorder_level ?? 10)) &&
+          (view !== 'out' || (p.current_stock ?? 0) === 0) &&
           (view !== 'draft' || !!p.is_draft),
       ),
     [products, category, view],
   )
+
+  const stats = useMemo(() => {
+    const list = products ?? []
+    let drafts = 0
+    let out = 0
+    let uncat = 0
+    for (const p of list) {
+      if (p.is_draft) drafts += 1
+      if ((p.current_stock ?? 0) === 0) out += 1
+      if (!p.category_code || p.category_code === 'Uncategorized') uncat += 1
+    }
+    return { total: list.length, drafts, out, uncat }
+  }, [products])
 
   const selectedProducts = useMemo(
     () => (products ?? []).filter((p) => rowSelection[String(p.id)]),
@@ -172,27 +197,36 @@ export function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Products</h1>
-          <p className="text-xs text-ink-muted">{(products ?? []).length.toLocaleString()} products in catalog</p>
+      <PageHeader
+        title="Products"
+        subtitle={`${(products ?? []).length.toLocaleString()} products in catalog`}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedProducts.length < 2}
+              title={selectedProducts.length < 2 ? 'Select at least 2 products to merge' : undefined}
+              onClick={() => setMergeOpen(true)}
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              Merge duplicates{selectedProducts.length >= 2 && ` (${selectedProducts.length})`}
+            </Button>
+            <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true) }}>
+              <Plus className="h-3.5 w-3.5" /> New product
+            </Button>
+          </>
+        }
+      />
+
+      {!isLoading && stats.total > 0 && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard tone="accent" icon="inventory_2" label="Products in catalog" value={stats.total.toLocaleString()} />
+          <StatCard tone="warning" icon="edit_note" label="Draft products" value={stats.drafts.toLocaleString()} />
+          <StatCard tone="critical" icon="warning" label="Out of stock" value={stats.out.toLocaleString()} />
+          <StatCard tone="serious" icon="sell" label="Uncategorized" value={stats.uncat.toLocaleString()} />
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={selectedProducts.length < 2}
-            title={selectedProducts.length < 2 ? 'Select at least 2 products to merge' : undefined}
-            onClick={() => setMergeOpen(true)}
-          >
-            <GitMerge className="h-3.5 w-3.5" />
-            Merge duplicates{selectedProducts.length >= 2 && ` (${selectedProducts.length})`}
-          </Button>
-          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true) }}>
-            <Plus className="h-3.5 w-3.5" /> New product
-          </Button>
-        </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -205,11 +239,28 @@ export function ProductsPage() {
             <option key={c}>{c}</option>
           ))}
         </Select>
-        <Select className="w-auto" value={view} onChange={(e) => setView(e.target.value)} aria-label="View filter">
-          <option value="">All products</option>
-          <option value="low">Low stock only</option>
-          <option value="draft">Drafts only</option>
-        </Select>
+        <div className="flex overflow-hidden rounded-md border border-hairline">
+          {(
+            [
+              ['', 'All'],
+              ['low', 'Low stock'],
+              ['out', 'Out of stock'],
+              ['draft', 'Drafts'],
+            ] as Array<[StockView, string]>
+          ).map(([value, label]) => (
+            <button
+              key={value || 'all'}
+              type="button"
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium cursor-pointer',
+                view === value ? 'bg-accent text-white' : 'bg-surface text-ink-secondary hover:bg-page',
+              )}
+              onClick={() => setView(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (

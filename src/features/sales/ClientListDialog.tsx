@@ -11,7 +11,7 @@ import type { ClientRow } from '@/types/database'
 type ClientListDialogProps = {
   open: boolean
   onClose: () => void
-  /** ✓ Select — fills the Sales Entry document header and closes. */
+  /** Select — fills the Sales Entry document header and closes. */
   onSelect: (client: ClientRow) => void
   /** ✎ Edit — the parent opens the ClientFormDialog prefilled. */
   onEdit: (client: ClientRow) => void

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { PageHeader } from '@/components/shared/PageHeader'
 import { Select } from '@/components/ui/select'
 import { DataManagementTab } from './DataManagementTab'
 import {
@@ -34,12 +35,10 @@ export function ImportPage() {
   const [tab, setTab] = useState<Tab>('sales')
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">CSV Import & Data Management</h1>
-        <p className="text-xs text-ink-muted">
-          Super Admin only — import legacy sales exports and price lists, or manage bulk data.
-        </p>
-      </div>
+      <PageHeader
+        title="CSV Import & Data Management"
+        subtitle="Super Admin only — import legacy sales exports and price lists, or manage bulk data."
+      />
       <div className="flex w-fit gap-1 rounded-lg border border-hairline bg-surface p-1">
         {(
           [
@@ -74,12 +73,48 @@ export function ImportPage() {
 
 type Step = 'upload' | 'map' | 'done'
 
+const STEP_LABELS: { id: Step; label: string }[] = [
+  { id: 'upload', label: 'Upload' },
+  { id: 'map', label: 'Map & validate' },
+  { id: 'done', label: 'Done' },
+]
+
+function Stepper({ step }: { step: Step }) {
+  const currentIdx = STEP_LABELS.findIndex((s) => s.id === step)
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {STEP_LABELS.map((s, i) => {
+        const state = i < currentIdx ? 'done' : i === currentIdx ? 'current' : 'todo'
+        return (
+          <div key={s.id} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold',
+                state === 'done'
+                  ? 'bg-good text-white'
+                  : state === 'current'
+                    ? 'bg-accent text-white'
+                    : 'bg-black/5 text-ink-muted',
+              )}
+            >
+              {state === 'done' ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+            </span>
+            <span className={cn('text-xs font-medium', state === 'todo' ? 'text-ink-muted' : 'text-ink')}>{s.label}</span>
+            {i < STEP_LABELS.length - 1 && <span className={cn('mx-1.5 h-px w-6', i < currentIdx ? 'bg-good' : 'bg-hairline')} />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
   const [step, setStep] = useState<Step>('upload')
   const [csv, setCsv] = useState<ParsedCsv | null>(null)
   const [fileName, setFileName] = useState('')
   const [mapping, setMapping] = useState<Mapping>({})
   const [busy, setBusy] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const [result, setResult] = useState<string[]>([])
   const { data: products } = useProducts()
   const { profile } = useAuth()
@@ -104,6 +139,15 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
       },
       error: (err: Error) => toast.error(`Parse failed: ${err.message}`),
     })
+  }
+
+  function acceptDropped(file: File | undefined) {
+    if (!file) return
+    if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+      toast.error('Please choose a .csv file')
+      return
+    }
+    onFile(file)
   }
 
   const validation = useMemo(() => {
@@ -206,12 +250,16 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
     setResult([])
   }
 
+  const unmappedRequired = fields.filter((f) => f.required && !mapping[f.key])
+
   return (
     <div className="space-y-4">
+      <Stepper step={step} />
+
       {step === 'upload' && (
         <Card>
           <CardHeader>
-            <CardTitle>1 · Choose file</CardTitle>
+            <CardTitle>Choose file</CardTitle>
             <CardDescription>
               {kind === 'sales'
                 ? 'Sales CSV in the "NAM SUPPLY-SALES ONLY ENCODER" format. Peso strings like ₱1,234.56 and MM/DD/YYYY dates are handled; files without a header row are mapped by column position.'
@@ -219,9 +267,27 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-baseline p-10 text-center hover:border-accent hover:bg-accent-soft/20">
-              <Upload className="h-6 w-6 text-ink-muted" />
-              <span className="text-sm font-medium">Click to choose a .csv file</span>
+            <label
+              className={cn(
+                'flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-10 text-center transition-colors',
+                dragActive ? 'border-accent bg-accent-soft/30' : 'border-baseline hover:border-accent hover:bg-accent-soft/20',
+              )}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragActive(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                setDragActive(false)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragActive(false)
+                acceptDropped(e.dataTransfer.files?.[0])
+              }}
+            >
+              <Upload className={cn('h-6 w-6', dragActive ? 'text-accent' : 'text-ink-muted')} />
+              <span className="text-sm font-medium">{dragActive ? 'Drop to upload' : 'Click to choose a .csv file'}</span>
               <span className="text-xs text-ink-muted">or drop it here</span>
               <input
                 type="file"
@@ -238,7 +304,7 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
         <>
           <Card>
             <CardHeader>
-              <CardTitle>2 · Review column mapping</CardTitle>
+              <CardTitle>Review column mapping</CardTitle>
               <CardDescription>
                 <FileSpreadsheet className="mr-1 inline h-3.5 w-3.5" />
                 {fileName} — {csv.rows.length.toLocaleString()} data rows.{' '}
@@ -247,26 +313,41 @@ function CsvImportTab({ kind }: { kind: 'sales' | 'prices' }) {
                   : 'No header row detected — columns were mapped by position. Check each one before committing.'}
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {fields.map((f) => (
-                <div key={f.key} className="space-y-1">
-                  <label className="text-xs font-medium text-ink-secondary">
-                    {f.label} {f.required && <span className="text-critical">*</span>}
-                  </label>
-                  <Select value={mapping[f.key] ?? ''} onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value }))}>
-                    <option value="">— not mapped —</option>
-                    {csv.headers.map((h) => (
-                      <option key={h}>{h}</option>
-                    ))}
-                  </Select>
-                </div>
-              ))}
+            <CardContent className="space-y-3">
+              {unmappedRequired.length > 0 && (
+                <p className="flex items-center gap-1.5 rounded-md bg-critical/10 px-3 py-2 text-xs font-medium text-critical">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Map the required column{unmappedRequired.length > 1 ? 's' : ''}: {unmappedRequired.map((f) => f.label).join(', ')}
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {fields.map((f) => {
+                  const missing = f.required && !mapping[f.key]
+                  return (
+                    <div key={f.key} className="space-y-1">
+                      <label className="text-xs font-medium text-ink-secondary">
+                        {f.label} {f.required && <span className="text-critical">*</span>}
+                      </label>
+                      <Select
+                        className={cn(missing && 'border-critical')}
+                        value={mapping[f.key] ?? ''}
+                        onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value }))}
+                      >
+                        <option value="">— not mapped —</option>
+                        {csv.headers.map((h) => (
+                          <option key={h}>{h}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  )
+                })}
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>3 · Validation report</CardTitle>
+              <CardTitle>Validation report</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap gap-2">

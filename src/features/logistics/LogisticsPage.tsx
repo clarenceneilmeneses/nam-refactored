@@ -1,18 +1,62 @@
 import { useMemo, useState } from 'react'
-import { Bookmark, CheckCircle2, PackageCheck, RefreshCw, Search } from 'lucide-react'
+import { Bookmark, CheckCircle2, Clock, PackageCheck, RefreshCw, Search } from 'lucide-react'
 import { useSales, SALES_KEY } from '@/hooks/useSales'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { BulkDeliverDialog } from '@/features/sales/BulkDeliverDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { buildDeliveryGroups, isPendingDelivery, pendingRows, type PoGroup } from './logisticsLogic'
+import { buildDeliveryGroups, isPendingDelivery, pendingRows, type CompanyGroup, type PoGroup } from './logisticsLogic'
 import type { SaleRow } from '@/types/database'
+
+const AGING_DAYS = 30
+const STALE_DAYS = 90
+type SortMode = 'oldest' | 'pending' | 'az'
+
+/** Whole-day age of an order, or null for missing/absurd legacy dates. */
+function orderAgeDays(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const t = new Date(`${iso}T00:00:00`).getTime()
+  if (Number.isNaN(t)) return null
+  const days = Math.floor((Date.now() - t) / 86_400_000)
+  // Clamp data-entry errors (e.g. year 0004) so they can't dominate sort/labels.
+  if (days < 0 || days > 3650) return null
+  return days
+}
+
+function agingLevel(days: number | null): 'none' | 'aging' | 'stale' {
+  if (days === null) return 'none'
+  if (days >= STALE_DAYS) return 'stale'
+  if (days >= AGING_DAYS) return 'aging'
+  return 'none'
+}
+
+function ageLabel(days: number): string {
+  if (days < 45) return `${days}d`
+  const months = Math.round(days / 30)
+  return months < 18 ? `${months} mo` : `${Math.round(days / 365)}y`
+}
+
+/** Oldest pending order age in a company group; -1 when none is datable. */
+function companyOldestAge(c: CompanyGroup): number {
+  let max = -1
+  for (const g of c.poGroups) {
+    for (const it of g.items) {
+      if (!isPendingDelivery(it)) continue
+      const d = orderAgeDays(it.date)
+      if (d !== null && d > max) max = d
+    }
+  }
+  return max
+}
 
 /**
  * Driver view (legacy delivery_view.php), mobile-first: undelivered sales
@@ -25,11 +69,26 @@ export function LogisticsPage() {
   useRealtimeInvalidate('sales', SALES_KEY)
 
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortMode>('oldest')
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set())
   const [deliverRows, setDeliverRows] = useState<SaleRow[]>([])
 
   const groups = useMemo(() => buildDeliveryGroups(sales ?? [], search), [sales, search])
   const pendingVisible = useMemo(() => pendingRows(groups), [groups])
+
+  // Presentational re-sort of the grouped result (grouping logic untouched).
+  const sortedGroups = useMemo(() => {
+    const arr = [...groups]
+    if (sort === 'pending') arr.sort((a, b) => b.pendingCount - a.pendingCount || a.company.localeCompare(b.company))
+    else if (sort === 'az') arr.sort((a, b) => a.company.localeCompare(b.company))
+    else arr.sort((a, b) => companyOldestAge(b) - companyOldestAge(a) || a.company.localeCompare(b.company))
+    return arr
+  }, [groups, sort])
+
+  const agingCount = useMemo(
+    () => pendingVisible.filter((r) => (orderAgeDays(r.date) ?? 0) >= AGING_DAYS).length,
+    [pendingVisible],
+  )
   // Selection survives refetches; rows that got delivered simply drop out here.
   const selectedRows = useMemo(() => pendingVisible.filter((r) => selected.has(r.id)), [pendingVisible, selected])
   const allSelected = pendingVisible.length > 0 && pendingVisible.every((r) => selected.has(r.id))
@@ -56,24 +115,44 @@ export function LogisticsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-24">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Deliveries</h1>
-          <p className="text-xs text-ink-muted">{pendingVisible.length.toLocaleString()} item(s) pending delivery</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} /> Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Deliveries"
+        subtitle={`${pendingVisible.length.toLocaleString()} item(s) pending delivery`}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} /> Refresh
+          </Button>
+        }
+      />
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />
-        <Input
-          className="pl-8"
-          placeholder="Search company, PO, or item…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      {!isLoading && groups.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard tone="accent" icon="inventory_2" label="Pending items" value={pendingVisible.length.toLocaleString()} />
+          <StatCard tone={agingCount > 0 ? 'warning' : 'neutral'} icon="schedule" label="Aging >30 days" value={agingCount.toLocaleString()} />
+          <StatCard tone="neutral" icon="apartment" label="Companies waiting" value={groups.length.toLocaleString()} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />
+          <Input
+            className="pl-8"
+            placeholder="Search company, PO, or item…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select
+          className="w-auto shrink-0"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortMode)}
+          aria-label="Sort deliveries"
+        >
+          <option value="oldest">Oldest first</option>
+          <option value="pending">Most pending</option>
+          <option value="az">Company A–Z</option>
+        </Select>
       </div>
 
       {pendingVisible.length > 0 && (
@@ -94,13 +173,21 @@ export function LogisticsPage() {
       ) : groups.length === 0 ? (
         <EmptyState title="No pending deliveries found." />
       ) : (
-        groups.map((company) => (
+        sortedGroups.map((company) => {
+          const oldest = companyOldestAge(company)
+          const companyLevel = agingLevel(oldest >= 0 ? oldest : null)
+          return (
           <Card key={company.company}>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="max-w-[70%] truncate" title={company.company}>
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <CardTitle className="min-w-0 flex-1 truncate" title={company.company}>
                 {company.company}
               </CardTitle>
-              <Badge variant="accent">{company.pendingCount} pending</Badge>
+              {companyLevel !== 'none' && (
+                <Badge variant={companyLevel === 'stale' ? 'serious' : 'warning'} title={`Oldest pending order is ${ageLabel(oldest)} old`}>
+                  <Clock className="h-3 w-3" /> {ageLabel(oldest)}
+                </Badge>
+              )}
+              <Badge variant="accent" className="shrink-0">{company.pendingCount} pending</Badge>
             </CardHeader>
             <CardContent className="space-y-4">
               {company.poGroups.map((group) => (
@@ -114,7 +201,8 @@ export function LogisticsPage() {
               ))}
             </CardContent>
           </Card>
-        ))
+          )
+        })
       )}
 
       {selectedRows.length > 0 && (
@@ -178,8 +266,10 @@ function PoSection({
         />
       </div>
       <div className="space-y-1.5">
-        {group.items.map((sale) =>
-          isPendingDelivery(sale) ? (
+        {group.items.map((sale) => {
+          const age = orderAgeDays(sale.date)
+          const level = agingLevel(age)
+          return isPendingDelivery(sale) ? (
             <div key={sale.id} className="flex items-center gap-3 rounded-lg border border-hairline p-3">
               <input
                 type="checkbox"
@@ -192,10 +282,17 @@ function PoSection({
                 <p className="truncate text-sm font-medium" title={sale.item ?? ''}>
                   {sale.item || `Sale #${sale.id}`}
                 </p>
-                <p className="text-xs text-ink-muted">
-                  Qty {sale.quantity_requested ?? 0}
+                <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+                  <span>Qty {sale.quantity_requested ?? 0}</span>
+                  <span aria-hidden>·</span>
+                  <span>Ordered {formatDate(sale.date)}</span>
+                  {level !== 'none' && age !== null && (
+                    <Badge variant={level === 'stale' ? 'serious' : 'warning'}>
+                      <Clock className="h-3 w-3" /> Aging {ageLabel(age)}
+                    </Badge>
+                  )}
                   {sale.is_reserved && (
-                    <Badge variant="warning" className="ml-1.5">
+                    <Badge variant="warning">
                       <Bookmark className="h-3 w-3" /> Reserved
                     </Badge>
                   )}
@@ -217,9 +314,10 @@ function PoSection({
                 <CheckCircle2 className="h-3.5 w-3.5" /> Delivered · {formatDate(sale.date_delivered)}
               </p>
             </div>
-          ),
-        )}
+          )
+        })}
       </div>
     </div>
   )
 }
+

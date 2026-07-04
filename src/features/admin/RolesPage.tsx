@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Pencil, Plus, ShieldCheck, Trash2, UsersRound } from 'lucide-react'
+import { Crown, Pencil, Plus, ShieldCheck, Trash2, UsersRound } from 'lucide-react'
 import {
   useDeleteRole,
   usePermissionList,
@@ -11,9 +11,11 @@ import {
 } from '@/hooks/useAdmin'
 import { SUPER_ADMIN_ROLE_ID } from '@/components/layout/PermissionGate'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -56,87 +58,113 @@ export function RolesPage() {
   if (isLoading || !permissions || !rolePerms) return <TableSkeleton />
 
   const deletingCount = deleting ? (userCounts.get(deleting.id) ?? 0) : 0
+  const permCols = [...permissions].sort((a, b) => a.id - b.id)
+  const roleList = roles ?? []
+  const unusedRoles = roleList.filter((r) => (userCounts.get(r.id) ?? 0) === 0).length
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Roles</h1>
-          <p className="text-xs text-ink-muted">
-            Permissions are enforced at the database (RLS) — changes apply on each user’s next data
-            fetch, so affected users may need to refresh.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null)
-            setFormOpen(true)
-          }}
-        >
-          <Plus className="h-4 w-4" /> Add Role
-        </Button>
+      <PageHeader
+        title="Roles"
+        subtitle="Permissions are enforced at the database (RLS) — changes apply on each user’s next data fetch, so affected users may need to refresh."
+        actions={
+          <Button
+            onClick={() => {
+              setEditing(null)
+              setFormOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" /> Add Role
+          </Button>
+        }
+      />
+
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard tone="accent" icon="shield" label="Roles" value={roleList.length.toLocaleString()} />
+        <StatCard tone="neutral" icon="key" label="Permissions" value={permCols.length.toLocaleString()} />
+        <StatCard tone={unusedRoles > 0 ? 'warning' : 'neutral'} icon="group" label="Roles with no users" value={unusedRoles.toLocaleString()} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {(roles ?? []).map((role) => {
-          const perms = permsByRole.get(role.id) ?? []
-          const count = userCounts.get(role.id) ?? 0
-          return (
-            <Card key={role.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-                <div>
-                  <CardTitle className="flex items-center gap-1.5">
-                    {role.id === SUPER_ADMIN_ROLE_ID && <span aria-hidden>👑</span>}
-                    {role.name}
-                  </CardTitle>
-                  <CardDescription>{role.description || 'No description'}</CardDescription>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Badge variant="neutral" title={`${count} user(s) have this role`}>
-                    <UsersRound className="h-3 w-3" /> {count}
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={`Edit ${role.name}`}
-                    onClick={() => {
-                      setEditing(role)
-                      setFormOpen(true)
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 text-critical"
-                    aria-label={`Delete ${role.name}`}
-                    disabled={role.id === SUPER_ADMIN_ROLE_ID}
-                    title={role.id === SUPER_ADMIN_ROLE_ID ? 'The Super Admin role cannot be deleted' : undefined}
-                    onClick={() => setDeleting(role)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {perms.length === 0 ? (
-                  <p className="text-xs text-ink-muted">No permissions</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {perms.map((perm) => (
-                      <Badge key={perm.id} variant="accent" title={perm.description ?? undefined}>
-                        <ShieldCheck className="h-3 w-3" /> {perm.name}
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-hairline bg-page/60 text-left text-[11px] font-semibold tracking-wide text-ink-muted uppercase">
+                <th className="px-3 py-2">Role</th>
+                <th className="px-2 py-2 text-center">Users</th>
+                {permCols.map((perm) => (
+                  <th key={perm.id} className="px-2 py-2 text-center font-mono normal-case" title={perm.description ?? undefined}>
+                    {perm.name}
+                  </th>
+                ))}
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roleList.map((role) => {
+                const isSuper = role.id === SUPER_ADMIN_ROLE_ID
+                const granted = new Set((permsByRole.get(role.id) ?? []).map((p) => p.id))
+                const count = userCounts.get(role.id) ?? 0
+                return (
+                  <tr key={role.id} className="border-b border-hairline last:border-0 hover:bg-page/70">
+                    <td className="px-3 py-2 align-top">
+                      <p className="flex items-center gap-1.5 font-medium">
+                        {isSuper && <Crown className="h-3.5 w-3.5 text-[#b06000]" aria-hidden />}
+                        {role.name}
+                      </p>
+                      <p className="text-xs text-ink-muted">{role.description || 'No description'}</p>
+                    </td>
+                    <td className="px-2 py-2 text-center align-top">
+                      <Badge variant="neutral" title={`${count} user(s) have this role`}>
+                        <UsersRound className="h-3 w-3" /> {count}
                       </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+                    </td>
+                    {permCols.map((perm) => {
+                      const has = isSuper || granted.has(perm.id)
+                      return (
+                        <td key={perm.id} className="px-2 py-2 text-center align-middle">
+                          {has ? (
+                            <ShieldCheck className="mx-auto h-4 w-4 text-accent" aria-label="granted" />
+                          ) : (
+                            <span className="text-ink-muted" aria-label="not granted">–</span>
+                          )}
+                        </td>
+                      )
+                    })}
+                    <td className="px-3 py-2 align-top">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label={`Edit ${role.name}`}
+                          onClick={() => {
+                            setEditing(role)
+                            setFormOpen(true)
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 text-critical"
+                          aria-label={`Delete ${role.name}`}
+                          disabled={isSuper}
+                          title={isSuper ? 'The Super Admin role cannot be deleted' : undefined}
+                          onClick={() => setDeleting(role)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
 
       <RoleFormDialog
         open={formOpen}

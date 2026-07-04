@@ -13,8 +13,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { PageHeader } from '@/components/shared/PageHeader'
 import { CATEGORIES } from '@/lib/categories'
 import { computeDueDate, computeSaleLine, round2 } from '@/lib/calculations'
+import { cn } from '@/lib/utils'
 import { formatPeso, toISODate } from '@/lib/format'
 import { nextQuoteRef } from '@/features/quotations/quoteRef'
 import { ClientListDialog } from './ClientListDialog'
@@ -112,6 +115,7 @@ export function SalesEntryPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [clientListOpen, setClientListOpen] = useState(false)
   const [clientForm, setClientForm] = useState<{ open: boolean; client: ClientRow | null }>({ open: false, client: null })
+  const [confirmQuote, setConfirmQuote] = useState(false)
 
   // Async product autocomplete: name ilike %q% limit 10, debounced a keystroke.
   const [productQuery, setProductQuery] = useState('')
@@ -160,8 +164,10 @@ export function SalesEntryPage() {
   const quantity = Math.max(0, Math.floor(Number(item.quantity) || 0))
   const suppliersPrice = Number(item.suppliers_price) || 0
   const namUnitPrice = Number(item.nam_unit_price) || 0
-  const totalCost = round2(quantity * suppliersPrice)
-  const totalSales = round2(quantity * namUnitPrice)
+  // Display-only live line totals + margin (same core money math as submit).
+  const line = computeSaleLine({ quantity, suppliersPrice, namUnitPrice })
+  const totalCost = line.totalActualAmount
+  const totalSales = line.totalNamAmount
 
   const editing = editingIndex !== null
 
@@ -304,8 +310,21 @@ export function SalesEntryPage() {
     }
   }
 
+  // Delivery/invoice details live per queued item and are dropped on the
+  // quotation path — warn before losing them.
+  const queueHasDeliveryData = queue.some(
+    (q) => q.sn || q.supplier || q.supplier_invoice_no || q.date_delivered || q.due_date || q.si_number,
+  )
+
+  function requestSaveAsQuotation() {
+    if (!validateBatch()) return
+    if (queueHasDeliveryData) setConfirmQuote(true)
+    else saveAsQuotation()
+  }
+
   async function saveAsQuotation() {
     if (!validateBatch()) return
+    setConfirmQuote(false)
     const company = header.company.trim()
     const quoteRef = nextQuoteRef((quotations ?? []).map((q) => q.quote_ref))
     try {
@@ -334,16 +353,16 @@ export function SalesEntryPage() {
   }
 
   const queueTotal = round2(queue.reduce((sum, q) => sum + round2(q.quantity * q.nam_unit_price), 0))
+  const queueCost = round2(queue.reduce((sum, q) => sum + round2(q.quantity * q.suppliers_price), 0))
+  const queueIncome = round2(queueTotal - queueCost)
   const busy = createSales.isPending || createQuotationBatch.isPending
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Sales Entry</h1>
-        <p className="text-xs text-ink-muted">
-          Queue items under one document header, then submit the batch as sales or save it as a quotation.
-        </p>
-      </div>
+      <PageHeader
+        title="Sales Entry"
+        subtitle="Queue items under one document header, then submit the batch as sales or save it as a quotation."
+      />
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
         {/* Left panel — entry form */}
@@ -354,9 +373,9 @@ export function SalesEntryPage() {
                 <CardTitle>Document Header</CardTitle>
                 <CardDescription>Shared across every queued item.</CardDescription>
               </div>
-              <label className="flex items-center gap-2 text-xs font-medium text-ink-secondary" title="Keep these values after each added item">
+              <label className="flex items-center gap-2 text-xs font-medium text-ink-secondary" title="Keep the header values after each added item for rapid encoding">
                 <input type="checkbox" className="h-4 w-4 accent-[#2a78d6]" checked={lock} onChange={(e) => setLock(e.target.checked)} />
-                Lock
+                Keep header
               </label>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -433,90 +452,114 @@ export function SalesEntryPage() {
               <CardTitle>Item Details</CardTitle>
               <CardDescription>Pick a product to auto-fill prices, category, and supplier — new items are allowed.</CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor={ITEM_INPUT_ID}>Item Description *</Label>
-                <Autocomplete
-                  id={ITEM_INPUT_ID}
-                  value={item.item}
-                  options={productOptions}
-                  maxResults={10}
-                  placeholder="Search products or type a new item…"
-                  onChange={(text) => setI('item', text)}
-                  onSelect={({ data }) =>
-                    setItem((i) => ({
-                      ...i,
-                      item: data.name,
-                      category: data.category_code || 'OFFICE SUPPLIES',
-                      supplier: data.supplier ?? '',
-                      suppliers_price: data.supplier_price ? String(data.supplier_price) : '',
-                      nam_unit_price: data.nam_price ? String(data.nam_price) : '',
-                    }))
-                  }
-                  renderOption={({ data }) => (
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate">{data.name}</span>
-                      <span className="shrink-0 text-xs text-ink-muted tabular-nums">{formatPeso(data.nam_price)}</span>
-                    </span>
-                  )}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-category">Category *</Label>
-                <Select id="se-category" value={item.category} onChange={(e) => setI('category', e.target.value)}>
-                  <option value="">Select category…</option>
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <CardContent className="space-y-4">
+              {/* Pricing — the required fast-encoding path */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor={ITEM_INPUT_ID}>Item Description *</Label>
+                  <Autocomplete
+                    id={ITEM_INPUT_ID}
+                    value={item.item}
+                    options={productOptions}
+                    maxResults={10}
+                    placeholder="Search products or type a new item…"
+                    onChange={(text) => setI('item', text)}
+                    onSelect={({ data }) =>
+                      setItem((i) => ({
+                        ...i,
+                        item: data.name,
+                        category: data.category_code || 'OFFICE SUPPLIES',
+                        supplier: data.supplier ?? '',
+                        suppliers_price: data.supplier_price ? String(data.supplier_price) : '',
+                        nam_unit_price: data.nam_price ? String(data.nam_price) : '',
+                      }))
+                    }
+                    renderOption={({ data }) => (
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate">{data.name}</span>
+                        <span className="shrink-0 text-xs text-ink-muted tabular-nums">{formatPeso(data.nam_price)}</span>
+                      </span>
+                    )}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="se-category">Category *</Label>
+                  <Select id="se-category" value={item.category} onChange={(e) => setI('category', e.target.value)}>
+                    <option value="">Select category…</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </Select>
+                </div>
                 <div className="space-y-1">
                   <Label htmlFor="se-qty">Quantity *</Label>
                   <Input id="se-qty" type="number" min={1} value={item.quantity} onChange={(e) => setI('quantity', e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="se-sn">S/N</Label>
-                  <Input id="se-sn" value={item.sn} onChange={(e) => setI('sn', e.target.value)} />
+                  <Label htmlFor="se-cost">Supplier Cost</Label>
+                  <Input id="se-cost" type="number" step="0.01" min={0} value={item.suppliers_price} onChange={(e) => setI('suppliers_price', e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="se-price">NAM Unit Price *</Label>
+                  <Input id="se-price" type="number" step="0.01" min={0} value={item.nam_unit_price} onChange={(e) => setI('nam_unit_price', e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="se-total-cost">Total Cost</Label>
+                  <Input id="se-total-cost" readOnly tabIndex={-1} className="bg-page tabular-nums" value={formatPeso(totalCost)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="se-total-sales">Total Sales</Label>
+                  <Input id="se-total-sales" readOnly tabIndex={-1} className="bg-page tabular-nums" value={formatPeso(totalSales)} />
+                </div>
+                {/* Live margin — display only */}
+                <div className="flex items-center justify-between rounded-md bg-page px-3 py-2 text-xs sm:col-span-2">
+                  <span className="text-ink-muted">Margin (income)</span>
+                  <span
+                    className={cn(
+                      'font-medium tabular-nums',
+                      namUnitPrice <= 0 ? 'text-ink-secondary' : line.income <= 0 ? 'text-critical' : 'text-good-text',
+                    )}
+                  >
+                    {formatPeso(line.income)} · {line.incomePercent.toFixed(1)}%
+                  </span>
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-cost">Supplier Cost</Label>
-                <Input id="se-cost" type="number" step="0.01" min={0} value={item.suppliers_price} onChange={(e) => setI('suppliers_price', e.target.value)} />
+
+              {/* Delivery & Invoicing — used when recording a completed sale */}
+              <div className="space-y-3 border-t border-hairline pt-4">
+                <p className="text-xs font-medium text-ink-secondary">
+                  Delivery &amp; Invoicing
+                  <span className="ml-2 font-normal text-ink-muted">Optional · not saved on quotations</span>
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="se-sn">S/N</Label>
+                    <Input id="se-sn" value={item.sn} onChange={(e) => setI('sn', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="se-supplier">Supplier Name</Label>
+                    <Input id="se-supplier" value={item.supplier} onChange={(e) => setI('supplier', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="se-supplier-inv">Supplier Invoice #</Label>
+                    <Input id="se-supplier-inv" value={item.supplier_invoice_no} onChange={(e) => setI('supplier_invoice_no', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="se-si">SI Number</Label>
+                    <Input id="se-si" value={item.si_number} onChange={(e) => setI('si_number', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="se-delivered">Date Delivered</Label>
+                    <Input id="se-delivered" type="date" value={item.date_delivered} onChange={(e) => setI('date_delivered', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="se-due">Due Date</Label>
+                    <Input id="se-due" type="date" value={item.due_date} onChange={(e) => setI('due_date', e.target.value)} />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-price">NAM Unit Price *</Label>
-                <Input id="se-price" type="number" step="0.01" min={0} value={item.nam_unit_price} onChange={(e) => setI('nam_unit_price', e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-total-cost">Total Cost</Label>
-                <Input id="se-total-cost" readOnly tabIndex={-1} className="bg-page tabular-nums" value={formatPeso(totalCost)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-total-sales">Total Sales</Label>
-                <Input id="se-total-sales" readOnly tabIndex={-1} className="bg-page tabular-nums" value={formatPeso(totalSales)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-supplier">Supplier Name</Label>
-                <Input id="se-supplier" value={item.supplier} onChange={(e) => setI('supplier', e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-supplier-inv">Supplier Invoice #</Label>
-                <Input id="se-supplier-inv" value={item.supplier_invoice_no} onChange={(e) => setI('supplier_invoice_no', e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-delivered">Date Delivered</Label>
-                <Input id="se-delivered" type="date" value={item.date_delivered} onChange={(e) => setI('date_delivered', e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-due">Due Date</Label>
-                <Input id="se-due" type="date" value={item.due_date} onChange={(e) => setI('due_date', e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="se-si">SI Number</Label>
-                <Input id="se-si" value={item.si_number} onChange={(e) => setI('si_number', e.target.value)} />
-              </div>
-              <div className="flex items-end gap-2 sm:col-span-2">
+
+              <div className="flex items-end gap-2 border-t border-hairline pt-4">
                 <Button className="flex-1" onClick={saveItem}>
                   {editing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   {editing ? 'Update Item' : 'Add to Queue'}
@@ -532,7 +575,7 @@ export function SalesEntryPage() {
         </div>
 
         {/* Right panel — the queue */}
-        <Card className="xl:sticky xl:top-4">
+        <Card id="se-queue" className="xl:sticky xl:top-4">
           <CardHeader className="flex-row items-center justify-between">
             <div>
               <CardTitle>Queue</CardTitle>
@@ -589,9 +632,22 @@ export function SalesEntryPage() {
             )}
 
             {queue.length > 0 && (
-              <p className="text-right text-sm text-ink-secondary">
-                Queue total: <strong className="text-ink tabular-nums">{formatPeso(queueTotal)}</strong>
-              </p>
+              <dl className="space-y-1 rounded-md bg-page px-3 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <dt className="text-ink-muted">Total cost</dt>
+                  <dd className="tabular-nums text-ink-secondary">{formatPeso(queueCost)}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-ink-muted">Income</dt>
+                  <dd className={cn('tabular-nums font-medium', queueIncome <= 0 ? 'text-critical' : 'text-good-text')}>
+                    {formatPeso(queueIncome)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between border-t border-hairline pt-1 text-sm">
+                  <dt className="font-medium text-ink">Total sales</dt>
+                  <dd className="font-semibold tabular-nums text-ink">{formatPeso(queueTotal)}</dd>
+                </div>
+              </dl>
             )}
 
             <div className="flex flex-col gap-2 border-t border-hairline pt-3 sm:flex-row">
@@ -601,7 +657,7 @@ export function SalesEntryPage() {
               <Button
                 className="flex-1 bg-warning text-[#3d2b00] hover:bg-[#e19f0e]"
                 disabled={queue.length === 0 || busy}
-                onClick={saveAsQuotation}
+                onClick={requestSaveAsQuotation}
               >
                 <FileText className="h-4 w-4" /> {createQuotationBatch.isPending ? 'Saving…' : 'Save as Quotation'}
               </Button>
@@ -609,6 +665,33 @@ export function SalesEntryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Mobile: queue lives below the form, so surface a reachable summary */}
+      {queue.length > 0 && (
+        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-between border-t border-hairline bg-surface/95 px-4 py-2 backdrop-blur md:-mx-6 md:px-6 xl:hidden">
+          <span className="text-sm">
+            <strong className="tabular-nums">{queue.length}</strong> queued ·{' '}
+            <span className="tabular-nums text-ink-secondary">{formatPeso(queueTotal)}</span>
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => document.getElementById('se-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            Review queue
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmQuote}
+        onClose={() => setConfirmQuote(false)}
+        title="Save as quotation?"
+        description="Delivery and invoicing details (supplier, S/N, dates, invoice numbers) aren’t stored on quotations and will be dropped. Item, category, quantity and prices are kept."
+        confirmLabel="Save as Quotation"
+        busy={createQuotationBatch.isPending}
+        onConfirm={saveAsQuotation}
+      />
 
       <ClientListDialog
         open={clientListOpen}

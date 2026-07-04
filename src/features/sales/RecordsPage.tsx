@@ -7,12 +7,13 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { DataTable } from '@/components/shared/DataTable'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { PaymentStatusBadge } from '@/components/shared/StatusBadge'
 import { DateRangeFilter, inRange, type DateRange } from '@/components/shared/DateRangeFilter'
 import { PermissionGate } from '@/components/layout/PermissionGate'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
@@ -44,7 +45,7 @@ function DueTrackerCell({ sale, today }: { sale: SaleRow; today: string }) {
     <span className="flex flex-col items-start gap-0.5 whitespace-nowrap">
       <span className="text-xs text-ink-secondary">{formatDate(sale.due_date)}</span>
       {badge.kind === 'paid' && (
-        <Badge className="border border-[#0ca30c]/50 bg-transparent text-good-text">✓ Paid</Badge>
+        <Badge className="border border-[#0ca30c]/50 bg-transparent text-good-text"><CheckCircle2 className="h-3 w-3" /> Paid</Badge>
       )}
       {badge.kind === 'no-due-date' && <Badge variant="neutral">No Due Date</Badge>}
       {badge.kind === 'overdue' && <Badge variant="critical">Overdue ({badge.days}d)</Badge>}
@@ -341,50 +342,28 @@ export function RecordsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Sales Records</h1>
-          <p className="text-xs text-ink-muted">
-            {(sales ?? []).length.toLocaleString()} records total · {filtered.length.toLocaleString()} shown
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canManage && selectedRows.length > 0 && (
-            <Button className="bg-good text-white hover:bg-[#0a8a0a]" onClick={() => setBulkOpen(true)}>
-              <PackageCheck className="h-4 w-4" /> Deliver Selected ({selectedRows.length})
+      <PageHeader
+        title="Sales Records"
+        subtitle={`${(sales ?? []).length.toLocaleString()} records total · ${filtered.length.toLocaleString()} shown`}
+        actions={
+          <>
+            {canManage && selectedRows.length > 0 && (
+              <Button className="bg-good text-white hover:bg-[#0a8a0a]" onClick={() => setBulkOpen(true)}>
+                <PackageCheck className="h-4 w-4" /> Deliver Selected ({selectedRows.length})
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => exportSalesCsv(filtered)}>
+              <Download className="h-3.5 w-3.5" /> Export CSV ({filtered.length.toLocaleString()})
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => exportSalesCsv(filtered)}>
-            <Download className="h-3.5 w-3.5" /> Export CSV ({filtered.length.toLocaleString()})
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-xs text-ink-muted">Collected</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-good-text">{formatPeso(kpis.collected)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-xs text-ink-muted">Outstanding</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{formatPeso(kpis.outstanding)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-xs text-ink-muted">Overdue Collections</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-critical">{formatPeso(kpis.overdue)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-xs text-ink-muted">Pending Delivery</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{kpis.pendingDelivery.toLocaleString()} item(s)</p>
-          </CardContent>
-        </Card>
+        <StatCard tone="good" icon="payments" label="Collected" value={formatPeso(kpis.collected)} />
+        <StatCard tone="neutral" icon="account_balance_wallet" label="Outstanding" value={formatPeso(kpis.outstanding)} />
+        <StatCard tone="critical" icon="warning" label="Overdue Collections" value={formatPeso(kpis.overdue)} />
+        <StatCard tone="warning" icon="local_shipping" label="Pending Delivery" value={`${kpis.pendingDelivery.toLocaleString()} item(s)`} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -446,6 +425,7 @@ export function RecordsPage() {
           data={filtered}
           columns={columns}
           pageSize={50}
+          stickyHeader
           rowClassName={(row) => {
             const badge = dueBadge(row, today)
             if (badge.kind === 'overdue') return 'bg-[#ffe6e6]'

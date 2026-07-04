@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, Banknote, Hourglass, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSales, useUpdateSale, SALES_KEY } from '@/hooks/useSales'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { DataTable } from '@/components/shared/DataTable'
 import { OverdueBadge } from '@/components/shared/StatusBadge'
-import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
@@ -156,33 +157,29 @@ export function FinancePage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Finance</h1>
-        <p className="text-xs text-ink-muted">Payment tracking and receivables</p>
-      </div>
+      <PageHeader title="Finance" subtitle="Payment tracking and receivables" />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryCard
-          icon={Hourglass}
+        <StatCard
+          tone="accent"
+          icon="hourglass_top"
           label="Outstanding receivables"
-          value={formatPeso(summary.receivable)}
-          hint={`${summary.unpaidCount.toLocaleString()} unpaid invoice(s)`}
-          loading={isLoading}
+          value={isLoading ? <Skeleton className="h-6 w-28" /> : formatPeso(summary.receivable)}
+          hint={!isLoading && `${summary.unpaidCount.toLocaleString()} unpaid invoice(s)`}
         />
-        <SummaryCard
-          icon={AlertTriangle}
+        <StatCard
+          tone={summary.overdueCount > 0 ? 'critical' : 'neutral'}
+          icon="warning"
           label="Overdue"
-          value={formatPeso(summary.overdueAmount)}
-          hint={`${summary.overdueCount.toLocaleString()} overdue invoice(s)`}
-          loading={isLoading}
-          critical={summary.overdueCount > 0}
+          value={isLoading ? <Skeleton className="h-6 w-28" /> : formatPeso(summary.overdueAmount)}
+          hint={!isLoading && `${summary.overdueCount.toLocaleString()} overdue invoice(s)`}
         />
-        <SummaryCard
-          icon={Banknote}
+        <StatCard
+          tone="good"
+          icon="payments"
           label="Collected this month"
-          value={formatPeso(summary.collectedThisMonth)}
-          hint="Based on date paid"
-          loading={isLoading}
+          value={isLoading ? <Skeleton className="h-6 w-28" /> : formatPeso(summary.collectedThisMonth)}
+          hint={!isLoading && 'Based on date paid'}
         />
       </div>
 
@@ -215,43 +212,3 @@ export function FinancePage() {
   )
 }
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  loading,
-  critical = false,
-}: {
-  icon: typeof Banknote
-  label: string
-  value: string
-  hint: string
-  loading: boolean
-  critical?: boolean
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <span
-          className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${
-            critical ? 'bg-[#d03b3b]/10 text-[#a32020]' : 'bg-accent-soft text-accent-strong'
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium tracking-wide text-ink-muted uppercase">{label}</p>
-          {loading ? (
-            <Skeleton className="mt-1 h-6 w-28" />
-          ) : (
-            <>
-              <p className="truncate text-xl font-semibold">{value}</p>
-              <p className="text-[11px] text-ink-muted">{hint}</p>
-            </>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}

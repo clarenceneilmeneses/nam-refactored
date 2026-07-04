@@ -12,6 +12,7 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
   ShieldCheck,
   Truck,
   Users,
@@ -19,7 +20,9 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useAvatarUrl } from '@/hooks/useProfile'
 import { SUPER_ADMIN_ROLE_ID } from '@/components/layout/PermissionGate'
+import { Avatar } from '@/components/shared/Avatar'
 import { cn } from '@/lib/utils'
 import type { PermissionName } from '@/types/database'
 import namLogo from '@/assets/nam-logo.png'
@@ -32,21 +35,44 @@ type NavItem = {
   perms: PermissionName[]
   /** Role-gated instead of permission-gated (e.g. CSV Import & Data Management). */
   superAdminOnly?: boolean
+  /** Kept in the app but hidden from the sidebar — flip off to restore. */
+  hidden?: boolean
 }
 
-const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: BarChart3, perms: ['view_dashboard'] },
-  { to: '/sales/new', label: 'Sales Entry', icon: FilePlus2, perms: ['manage_sales'] },
-  { to: '/records', label: 'Records', icon: ClipboardList, perms: ['manage_sales', 'view_dashboard'] },
-  { to: '/quotations', label: 'Quotations', icon: FileText, perms: ['manage_sales'] },
-  { to: '/products', label: 'Products', icon: Package, perms: ['manage_products'] },
-  { to: '/finance', label: 'Finance', icon: Wallet, perms: ['manage_finance', 'view_dashboard'] },
-  { to: '/logistics', label: 'Logistics', icon: Truck, perms: ['view_logistics'] },
-  { to: '/import', label: 'CSV Import', icon: FileSpreadsheet, perms: [], superAdminOnly: true },
-  // Admin area matches legacy: Super Admin (role id 1) only, not permission-gated.
-  { to: '/admin/users', label: 'Users', icon: Users, perms: [], superAdminOnly: true },
-  { to: '/admin/roles', label: 'Roles', icon: ShieldCheck, perms: [], superAdminOnly: true },
-  { to: '/admin/logs', label: 'Logs', icon: History, perms: [], superAdminOnly: true },
+type NavSection = {
+  heading?: string
+  items: NavItem[]
+}
+
+const NAV: NavSection[] = [
+  { items: [{ to: '/', label: 'Dashboard', icon: BarChart3, perms: ['view_dashboard'] }] },
+  {
+    heading: 'Sales',
+    items: [
+      { to: '/sales/new', label: 'Sales Entry', icon: FilePlus2, perms: ['manage_sales'] },
+      { to: '/records', label: 'Records', icon: ClipboardList, perms: ['manage_sales', 'view_dashboard'] },
+      { to: '/quotations', label: 'Quotations', icon: FileText, perms: ['manage_sales'] },
+      // Hidden per request — remove `hidden: true` to bring Finance back to the sidebar.
+      { to: '/finance', label: 'Finance', icon: Wallet, perms: ['manage_finance', 'view_dashboard'], hidden: true },
+    ],
+  },
+  {
+    heading: 'Inventory',
+    items: [
+      { to: '/products', label: 'Products', icon: Package, perms: ['manage_products'] },
+      { to: '/logistics', label: 'Logistics', icon: Truck, perms: ['view_logistics'] },
+    ],
+  },
+  {
+    heading: 'Administration',
+    // Super Admin (role id 1) only, not permission-gated — matches legacy.
+    items: [
+      { to: '/import', label: 'CSV Import', icon: FileSpreadsheet, perms: [], superAdminOnly: true },
+      { to: '/admin/users', label: 'Users', icon: Users, perms: [], superAdminOnly: true },
+      { to: '/admin/roles', label: 'Roles', icon: ShieldCheck, perms: [], superAdminOnly: true },
+      { to: '/admin/logs', label: 'Logs', icon: History, perms: [], superAdminOnly: true },
+    ],
+  },
 ]
 
 function manilaGreeting(): string {
@@ -60,6 +86,7 @@ function manilaGreeting(): string {
 
 export function AppShell() {
   const { session, profile, loading, hasPermission, signOut } = useAuth()
+  const avatarUrl = useAvatarUrl()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const navigate = useNavigate()
@@ -91,30 +118,48 @@ export function AppShell() {
     )
   }
 
-  const visibleNav = NAV.filter((item) =>
-    item.superAdminOnly ? profile.role_id === SUPER_ADMIN_ROLE_ID : item.perms.some((p) => hasPermission(p)),
-  )
+  const visibleSections = NAV.map((section) => ({
+    heading: section.heading,
+    items: section.items.filter((item) =>
+      item.hidden
+        ? false
+        : item.superAdminOnly
+          ? profile.role_id === SUPER_ADMIN_ROLE_ID
+          : item.perms.some((p) => hasPermission(p)),
+    ),
+  })).filter((section) => section.items.length > 0)
 
   const navLinks = (
-    <nav className="flex flex-1 flex-col gap-0.5 p-2">
-      {visibleNav.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/'}
-          onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink',
-              isActive && 'bg-accent-soft/60 font-medium text-accent-strong hover:bg-accent-soft/60',
-              collapsed && 'justify-center px-2',
-            )
-          }
-          title={item.label}
-        >
-          <item.icon className="h-4 w-4 shrink-0" />
-          {!collapsed && <span className="truncate">{item.label}</span>}
-        </NavLink>
+    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+      {visibleSections.map((section, i) => (
+        <div key={section.heading ?? `section-${i}`} className="flex flex-col gap-0.5">
+          {collapsed
+            ? i > 0 && <div className="mx-2 my-2 border-t border-hairline" />
+            : section.heading && (
+                <p className="px-3 pt-4 pb-1 text-[11px] font-medium tracking-wide text-ink-muted uppercase">
+                  {section.heading}
+                </p>
+              )}
+          {section.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink',
+                  isActive && 'bg-accent-soft/60 font-medium text-accent-strong hover:bg-accent-soft/60',
+                  collapsed && 'justify-center px-2',
+                )
+              }
+              title={item.label}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {!collapsed && <span className="truncate">{item.label}</span>}
+            </NavLink>
+          ))}
+        </div>
       ))}
     </nav>
   )
@@ -124,15 +169,37 @@ export function AppShell() {
     navigate('/login')
   }
 
-  const renderFooter = (isCollapsed: boolean) => (
-    <div className="border-t border-hairline p-2">
+  // Greeting + identity, now pinned to the top of the sidebar.
+  const renderUserBlock = (isCollapsed: boolean) => (
+    <div className={cn('flex items-center gap-3 border-b border-hairline p-3', isCollapsed && 'justify-center px-0')}>
+      <Avatar url={avatarUrl} name={profile.full_name} fallback={profile.username} className="h-9 w-9 text-xs" />
       {!isCollapsed && (
-        <div className="px-3 py-2">
+        <div className="min-w-0">
           <p className="text-[11px] text-ink-muted">{manilaGreeting()},</p>
           <p className="truncate text-sm font-medium text-ink">{profile.full_name || profile.username}</p>
           <p className="truncate text-[11px] text-ink-muted">{profile.role_name ?? '—'}</p>
         </div>
       )}
+    </div>
+  )
+
+  const renderFooter = (isCollapsed: boolean) => (
+    <div className="border-t border-hairline p-2">
+      <NavLink
+        to="/settings"
+        onClick={() => setMobileOpen(false)}
+        className={({ isActive }) =>
+          cn(
+            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink',
+            isActive && 'bg-accent-soft/60 font-medium text-accent-strong hover:bg-accent-soft/60',
+            isCollapsed && 'justify-center px-2',
+          )
+        }
+        title="Settings"
+      >
+        <Settings className="h-4 w-4 shrink-0" />
+        {!isCollapsed && 'Settings'}
+      </NavLink>
       <button
         className={cn(
           'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:bg-black/5 hover:text-ink cursor-pointer',
@@ -163,6 +230,7 @@ export function AppShell() {
             <img src={namLogo} alt="NAM Builders and Supply Corp." className="w-40" />
           )}
         </div>
+        {renderUserBlock(collapsed)}
         {navLinks}
         <button
           className={cn(
@@ -189,6 +257,7 @@ export function AppShell() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {renderUserBlock(false)}
             {navLinks}
             {renderFooter(false)}
           </aside>

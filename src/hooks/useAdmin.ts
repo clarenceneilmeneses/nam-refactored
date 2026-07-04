@@ -10,7 +10,7 @@ export function useUsers() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('users')
-        .select('id, username, full_name, role_id, auth_id, created_at')
+        .select('id, username, full_name, role_id, auth_id, avatar_url, created_at')
         .order('id')
       if (error) throw new Error(error.message)
       return data as UserRow[]

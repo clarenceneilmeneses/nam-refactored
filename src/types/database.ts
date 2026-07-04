@@ -98,6 +98,7 @@ export type UserRow = {
   full_name: string | null
   role_id: number | null
   auth_id: string | null
+  avatar_url: string | null
   created_at: string
 }
 export type UserInsert = Partial<Omit<UserRow, 'id' | 'created_at'>> & { username: string }

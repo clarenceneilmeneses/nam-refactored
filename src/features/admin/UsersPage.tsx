@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Crown, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useCreateUser, useDeleteUser, useRoles, useUpdateUser, useUsers } from '@/hooks/useAdmin'
 import { useAuth } from '@/hooks/useAuth'
 import { SUPER_ADMIN_ROLE_ID } from '@/components/layout/PermissionGate'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { EmptyState } from '@/components/shared/EmptyState'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { StatCard } from '@/components/shared/StatCard'
+import { Avatar } from '@/components/shared/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,6 +20,8 @@ import { TableSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/format'
 import type { RoleRow, UserRow } from '@/types/database'
 
+type UserSort = 'newest' | 'name' | 'role'
+
 export function UsersPage() {
   const { data: users, isLoading, error } = useUsers()
   const { data: roles } = useRoles()
@@ -25,34 +31,95 @@ export function UsersPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<UserRow | null>(null)
   const [deleting, setDeleting] = useState<UserRow | null>(null)
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<string>('all')
+  const [sort, setSort] = useState<UserSort>('newest')
 
   const roleNames = useMemo(() => new Map((roles ?? []).map((r) => [r.id, r.name])), [roles])
   const superAdminCount = useMemo(
     () => (users ?? []).filter((u) => u.role_id === SUPER_ADMIN_ROLE_ID).length,
     [users],
   )
+  const noLoginCount = useMemo(() => (users ?? []).filter((u) => !u.auth_id).length, [users])
+
+  const visibleUsers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    let list = (users ?? []).filter((u) => {
+      if (roleFilter !== 'all' && String(u.role_id ?? '') !== roleFilter) return false
+      if (!q) return true
+      return u.username.toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q)
+    })
+    list = [...list].sort((a, b) => {
+      if (sort === 'name') return (a.full_name || a.username).localeCompare(b.full_name || b.username)
+      if (sort === 'role') {
+        const ra = roleNames.get(a.role_id ?? -1) ?? '~'
+        const rb = roleNames.get(b.role_id ?? -1) ?? '~'
+        return ra.localeCompare(rb) || a.username.localeCompare(b.username)
+      }
+      return b.id - a.id // newest
+    })
+    return list
+  }, [users, search, roleFilter, sort, roleNames])
 
   if (error) return <p className="text-sm text-critical">Couldn’t load users: {(error as Error).message}</p>
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Users</h1>
-          <p className="text-xs text-ink-muted">Staff accounts and their roles. New users can sign in right away.</p>
+      <PageHeader
+        title="Users"
+        subtitle="Staff accounts and their roles. New users can sign in right away."
+        actions={
+          <Button
+            onClick={() => {
+              setEditing(null)
+              setFormOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" /> Add User
+          </Button>
+        }
+      />
+
+      {!isLoading && (users?.length ?? 0) > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard tone="accent" icon="group" label="Total users" value={(users?.length ?? 0).toLocaleString()} />
+          <StatCard tone={superAdminCount > 1 ? 'warning' : 'neutral'} icon="admin_panel_settings" label="Super Admins" value={superAdminCount.toLocaleString()} />
+          <StatCard tone={noLoginCount > 0 ? 'warning' : 'neutral'} icon="person_off" label="Without login yet" value={noLoginCount.toLocaleString()} />
         </div>
-        <Button
-          onClick={() => {
-            setEditing(null)
-            setFormOpen(true)
-          }}
-        >
-          <Plus className="h-4 w-4" /> Add User
-        </Button>
-      </div>
+      )}
+
+      {!isLoading && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[12rem] flex-1">
+            <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />
+            <Input
+              className="pl-8"
+              placeholder="Search username or name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Select className="w-auto shrink-0" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} aria-label="Filter by role">
+            <option value="all">All roles</option>
+            {(roles ?? []).map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </Select>
+          <Select className="w-auto shrink-0" value={sort} onChange={(e) => setSort(e.target.value as UserSort)} aria-label="Sort users">
+            <option value="newest">Newest</option>
+            <option value="name">Name</option>
+            <option value="role">Role</option>
+          </Select>
+        </div>
+      )}
 
       {isLoading ? (
         <TableSkeleton />
+      ) : visibleUsers.length === 0 ? (
+        <EmptyState
+          title="No users found"
+          description={search || roleFilter !== 'all' ? 'Try a different search or filter.' : 'Add a user to get started.'}
+        />
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -68,26 +135,29 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {(users ?? []).map((user) => {
+                {visibleUsers.map((user) => {
                   const isSelf = profile?.id === user.id
                   const isLastSuperAdmin = user.role_id === SUPER_ADMIN_ROLE_ID && superAdminCount <= 1
                   return (
                     <tr key={user.id} className="border-b border-hairline last:border-0 hover:bg-page/70">
                       <td className="px-3 py-2 text-ink-muted tabular-nums">{user.id}</td>
                       <td className="px-3 py-2 font-medium">
-                        {user.username}
-                        {isSelf && <Badge variant="accent" className="ml-2">you</Badge>}
-                        {!user.auth_id && (
-                          <Badge variant="serious" className="ml-2" title="No Supabase Auth login yet — edit the user and set a password to create one">
-                            no login
-                          </Badge>
-                        )}
+                        <span className="flex items-center gap-2">
+                          <Avatar url={user.avatar_url} name={user.full_name} fallback={user.username} className="h-7 w-7 text-[10px]" />
+                          <span>{user.username}</span>
+                          {isSelf && <Badge variant="accent">you</Badge>}
+                          {!user.auth_id && (
+                            <Badge variant="serious" title="No Supabase Auth login yet — edit the user and set a password to create one">
+                              no login
+                            </Badge>
+                          )}
+                        </span>
                       </td>
                       <td className="px-3 py-2">{user.full_name || '—'}</td>
                       <td className="px-3 py-2">
                         {user.role_id === SUPER_ADMIN_ROLE_ID ? (
                           <Badge className="bg-[#fab219]/20 text-[#7a5200]">
-                            👑 {roleNames.get(user.role_id) ?? 'Super Admin'}
+                            <Crown className="h-3 w-3" /> {roleNames.get(user.role_id) ?? 'Super Admin'}
                           </Badge>
                         ) : user.role_id != null && roleNames.has(user.role_id) ? (
                           <Badge variant="neutral">{roleNames.get(user.role_id)}</Badge>
