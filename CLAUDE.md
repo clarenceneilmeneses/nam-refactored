@@ -14,15 +14,15 @@ Conventions that apply to every task:
   income_percent      = income / total_nam_amount × 100 (0 when total_nam_amount = 0)
   total_amount_due    = total_nam_amount − withholding_tax
   markup% = (n−s)/s × 100 ; margin% = (n−s)/n × 100 (bidirectional solvers exist)
-- Keep the existing clean UI shell; these tasks add features, not restyle the app.
+Design language: Google-console style (Analytics / Cloud Console) — clean, content-first, fully themeable.
+- All colors come from the design tokens in src/index.css @theme (page #f8f9fa, white surface cards, Google grays #202124/#5f6368/#80868b, hairline #dadce0, semantic good/warning/serious/critical, accent defaults to Google Blue #1a73e8). A full dark theme overrides the same tokens via html[data-theme='dark'].
+- NEVER hardcode hex colors in components — use the token utility classes (bg-surface, text-ink / text-ink-secondary / text-ink-muted, border-hairline, text-accent-strong, bg-good/15 text-good-text, …). The accent tokens are overridden at runtime (preset or user-picked custom accent in useSettings), so hardcoded colors break theming.
+- User-tunable appearance, all device-local via useSettings/useTheme (localStorage): light/dark/system theme, accent presets + custom hue (deriveAccentVariants re-tones any hex for both themes), text size (root font-size — keep sizes rem-based), compact tables (html[data-density='compact'] tightens main-table padding via index.css), home page after login, 24-hour clock, sidebar start-collapsed.
+- Page skeleton: PageHeader (+ optional actions) → StatCard grid → Cards with content. Content-light pages (Settings, Users, Roles, Logistics, Import) are centered with mx-auto max-w-*; data-heavy pages run full width.
+- Cards: rounded-xl/2xl, hairline borders or soft shadows (shadow-e1/e2) — never both heavy. Icons: lucide, thin-stroke, small.
+- Data tables stay compact and dense; extra density comes from the user's compact-tables setting, never from restyling.
+- Charts (recharts): theme-aware palettes in features/dashboard/palette.ts — CHART_THEMES has validated light AND dark categorical slots (fixed order, never cycled; beyond 8 folds into `other`), plus chart chrome (grid/ink/tooltip/surface). Chart components read the active theme via useTheme, never hardcoded colors. Status colors (good/warning/critical) are reserved for status meaning (paid/pending/unpaid, targets), never used as "just another series". Manager colors are fixed per-person identity colors (managerColor) in both themes.
+- Motion: subtle only (150–200ms ease); no bouncy animations.
+- The printable formal quotation (FormalQuotePreview + #formal-quote-doc in index.css) is EXEMPT from all theming — it reproduces the legacy printed quote pixel-for-pixel (Arial, fixed colors, @page margin 0) and must not be restyled.
 
-Design language: Apple-inspired — clean, quiet, content-first.
-- Typography: Inter or SF-style system font stack; tight tracking on headings; generous whitespace.
-- Color: near-white background (#f5f5f7), white cards, one restrained accent color; muted grays for secondary text; no gradients, no heavy borders.
-- Cards: large radius (12–16px), hairline borders or very soft shadows — never both heavy.
-- Density: fewer visual dividers, more spacing; tables use subtle row separators, no zebra striping.
-- Motion: subtle only (150–200ms ease transitions on hover/expand); no bouncy animations.
-- Icons: thin-stroke (lucide), monochrome, small.
-- Charts: desaturated palette, no chart borders, minimal gridlines, clean axis labels.
-- Data tables stay compact and dense — minimalism comes from removing visual noise, not adding padding.
-- Semantic status colors (red overdue, yellow due-soon, green paid/delivered) stay clearly distinguishable, just desaturated to fit the palette.
+Deployment: static SPA — the host must rewrite unknown paths to /index.html (public/.htaccess covers Apache/LiteSpeed e.g. Hostinger; public/_redirects covers Netlify; vercel.json covers Vercel). Deploy = `npm run build`, then upload the CONTENTS of dist/ (including the dotfile .htaccess).
