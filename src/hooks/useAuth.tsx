@@ -9,6 +9,7 @@ import {
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { logAction } from '@/lib/log'
 import type { PermissionName, UserRow } from '@/types/database'
 
 export type Profile = UserRow & { role_name: string | null }
@@ -27,8 +28,27 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-/** Where a user lands after login, by descending privilege. Drivers land on Logistics. */
+/** Selectable "home page after login" options, each gated like its route. */
+export const HOME_ROUTE_OPTIONS: Array<{ path: string; label: string; perms: PermissionName[] }> = [
+  { path: '/', label: 'Dashboard', perms: ['view_dashboard'] },
+  { path: '/records', label: 'Records', perms: ['manage_sales', 'view_dashboard'] },
+  { path: '/sales/new', label: 'Sales Entry', perms: ['manage_sales'] },
+  { path: '/quotations', label: 'Quotations', perms: ['manage_sales'] },
+  { path: '/products', label: 'Products', perms: ['manage_products'] },
+  { path: '/logistics', label: 'Logistics', perms: ['view_logistics'] },
+]
+
+export const KEY_HOME_ROUTE = 'nam-home-route'
+
+/**
+ * Where a user lands after login. A device preference (Settings → System)
+ * wins when the user still has permission for it; otherwise falls back to
+ * descending privilege. Drivers land on Logistics.
+ */
 export function landingRoute(permissions: Set<string>): string {
+  const pref = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY_HOME_ROUTE) : null
+  const opt = pref ? HOME_ROUTE_OPTIONS.find((o) => o.path === pref) : undefined
+  if (opt && opt.perms.some((p) => permissions.has(p))) return opt.path
   if (permissions.has('view_dashboard')) return '/'
   if (permissions.has('manage_sales')) return '/records'
   if (permissions.has('view_logistics')) return '/logistics'
@@ -118,14 +138,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setLoading(false)
+    if (!error && data.user) {
+      // Audit trail (legacy parity). The profile row hasn't loaded yet, so
+      // resolve the legacy users.id here; fire-and-forget, never blocks login.
+      void supabase
+        .from('users')
+        .select('id, username')
+        .eq('auth_id', data.user.id)
+        .maybeSingle()
+        .then(({ data: u }) => {
+          if (u) logAction(u.id, 'Logged In', `User "${u.username}" logged in`)
+        })
+    }
     return { error: error?.message ?? null }
   }, [])
 
   const signOut = useCallback(async () => {
+    // Log before the session is destroyed — the insert needs the
+    // authenticated role to pass RLS. logAction swallows failures.
+    if (profile) await logAction(profile.id, 'Logged Out', `User "${profile.username}" logged out`)
     await supabase.auth.signOut()
-  }, [])
+  }, [profile])
 
   const value = useMemo(
     () => ({ session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile }),

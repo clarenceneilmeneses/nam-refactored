@@ -5,7 +5,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { formatPeso } from '@/lib/format'
-import { INDIGO } from './palette'
 import {
   GROUP_BY_OPTIONS,
   PERIOD_OPTIONS,
@@ -150,9 +149,7 @@ export function FilterBar({
             />
             %
           </span>
-          <span className="text-xl font-bold tabular-nums" style={{ color: INDIGO }}>
-            {formatPeso((revenue * bonusPct) / 100)}
-          </span>
+          <span className="text-xl font-bold tabular-nums text-accent-strong">{formatPeso((revenue * bonusPct) / 100)}</span>
           <span className="text-[11px] text-ink-muted">Calculated from currently filtered revenue</span>
         </div>
 

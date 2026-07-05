@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { Printer, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +16,7 @@ type FormalQuotePreviewProps = {
   company: string | null
   address: string | null
   quoteRef: string | null
-  /** ISO date (yyyy-MM-dd). */
+  /** ISO date (yyyy-MM-dd) — printed as-is on the document. */
   date: string
   poNumber: string | null
   paymentTerm: string | null
@@ -27,17 +26,14 @@ type FormalQuotePreviewProps = {
 
 type DocRow = { key: string; name: string; qty: number; price: number; image: string | null }
 
-/** Doc-internal amounts: commas + 2 decimals, no currency symbol. */
+/** Totals rows: commas + 2 decimals (₱ prefixed where rendered). */
 function money(n: number): string {
   return n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function docDate(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMMM d, yyyy')
-  } catch {
-    return iso
-  }
+/** Unit price column: plain 2 decimals, no thousands separator (legacy format). */
+function moneyPlain(n: number): string {
+  return n.toFixed(2)
 }
 
 /**
@@ -120,9 +116,19 @@ function ImageUpload({
   )
 }
 
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-36 shrink-0 font-bold">{label}</span>
+      <span className="flex-1 font-bold">{children}</span>
+    </div>
+  )
+}
+
 /**
  * Formal Document Preview: print-ready NAM quotation, fully inline-editable.
- * Item images and the two e-signatures persist in localStorage (legacy
+ * Layout mirrors the legacy printed quote (quote format.pdf) exactly.
+ * Item images and the e-signature persist in localStorage (legacy
  * cache_img_* keys) so they auto-load on future quotes.
  */
 export function FormalQuotePreview({
@@ -147,7 +153,7 @@ export function FormalQuotePreview({
       image: loadCachedImage(itemImageKey(line.item)),
     })),
   )
-  const [signatures, setSignatures] = useState<Array<string | null>>(() => SIGNATURE_KEYS.map((key) => loadCachedImage(key)))
+  const [signature, setSignature] = useState<string | null>(() => loadCachedImage(SIGNATURE_KEYS[0]))
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -204,7 +210,7 @@ export function FormalQuotePreview({
         {/* The document */}
         <div id="formal-quote-doc" className="bg-white p-8 text-[13px] leading-snug text-black shadow-xl">
           {/* Letterhead */}
-          <div className="flex items-start justify-between gap-4 border-b-4 border-double border-[#003366] pb-3">
+          <div className="flex items-start justify-between gap-4 border-b-[4px] border-[#003366] pb-3">
             <div className="flex items-start gap-3">
               <img
                 src="/logo.png"
@@ -217,11 +223,9 @@ export function FormalQuotePreview({
               <div className="text-[11px]">
                 <h1 className="text-lg font-bold tracking-wide text-[#003366]">NAM BUILDERS AND SUPPLY CORP.</h1>
                 <p>
-                  <strong>MAIN:</strong> RNA Building, Brgy Santiago, Malvar, Batangas, 4233
+                  <strong>MAIN:</strong> RNA BUILDING, BRGY SANTIAGO, MALVAR, BATANGAS, 4233
                 </p>
-                <p className="font-semibold text-[#2a78d6]">
-                  <strong>SATELLITE OFFICE:</strong> Yatco Subdivision, Barangay 4, Tanauan City, Batangas
-                </p>
+                <p className="font-bold text-[#2a78d6]">SATELLITE OFFICE: Yatco Subdivision, Barangay 4, Tanauan City, Batangas</p>
                 <p>
                   <strong>CONTACT NO:</strong> 0963-732-6844 / 0917-834-8811 / 0901-556-352
                 </p>
@@ -230,176 +234,229 @@ export function FormalQuotePreview({
                 </p>
               </div>
             </div>
-            <div className="pt-2 text-2xl font-bold tracking-[0.3em] text-[#003366]">QUOTATION</div>
+            <div className="pt-2 text-2xl font-bold tracking-[0.25em] text-[#44546a]">QUOTATION</div>
           </div>
 
           {/* Customer detail */}
-          <div className="mt-4 flex justify-between gap-8 text-[12px]">
-            <div className="flex-1">
-              <p className="mb-1 font-bold text-[#003366]">CUSTOMER DETAIL</p>
-              <p>
-                <strong>Company Name:</strong> <Editable initial={company ?? ''} className="min-w-40" />
-              </p>
-              <p>
-                <strong>Address:</strong> <Editable initial={address ?? ''} className="min-w-40" />
-              </p>
-              <p>
-                <strong>Contact Person:</strong> <Editable initial="" className="min-w-40" />
-              </p>
-              <p>
-                <strong>Contact Number:</strong> <Editable initial="" className="min-w-40" />
-              </p>
-              <p>
-                <strong>Email:</strong> <Editable initial="" className="min-w-40" />
-              </p>
-            </div>
-            <div className="w-64">
-              <p>
-                <strong>Quotation No:</strong> <Editable initial={quoteRef ?? ''} className="min-w-24" />
-              </p>
-              <p>
-                <strong>Quotation Date:</strong> <Editable initial={docDate(date)} className="min-w-24" />
-              </p>
-              <p>
-                <strong>Vehicle No:</strong> <Editable initial="" className="min-w-24" />
-              </p>
-              <p>
-                <strong>Inquiry Ref #:</strong> <Editable initial={poNumber ?? ''} className="min-w-24" />
-              </p>
+          <div className="mt-4 text-[12px]">
+            <p className="mb-1 text-[13px] font-bold">CUSTOMER DETAIL</p>
+            <div className="flex justify-between gap-8">
+              <div className="flex-1 space-y-0.5">
+                <DetailRow label="COMPANY NAME:">
+                  <Editable initial={company ?? ''} className="min-w-40" />
+                </DetailRow>
+                <DetailRow label="COMPANY ADDRESS:">
+                  <Editable initial={address ?? ''} className="min-w-40" />
+                </DetailRow>
+                <DetailRow label="CONTACT PERSON:">
+                  <Editable initial="" className="min-w-40" />
+                </DetailRow>
+                <DetailRow label="CONTACT NUMBER:">
+                  <Editable initial="" className="min-w-40" />
+                </DetailRow>
+                <DetailRow label="EMAIL ADDRESS:">
+                  <Editable initial="" className="min-w-40" />
+                </DetailRow>
+                <div className="flex gap-2 pt-2">
+                  <span className="w-36 shrink-0 font-bold">TERMS:</span>
+                  <Editable initial={paymentTerm ?? ''} className="min-w-24" />
+                </div>
+              </div>
+              <div className="w-72 space-y-0.5 self-start">
+                <div className="flex gap-2">
+                  <span className="w-36 shrink-0 font-bold">QUOTATION NO:</span>
+                  <Editable initial={quoteRef ?? ''} className="min-w-24 flex-1 font-bold" />
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-36 shrink-0 font-bold">QUOTATION DATE:</span>
+                  <Editable initial={date} className="min-w-24 flex-1 font-bold" />
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-36 shrink-0 font-bold">VEHICLE NO:</span>
+                  <Editable initial="" className="min-w-24 flex-1 font-bold" />
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-36 shrink-0 font-bold">INQUIRY REF #:</span>
+                  <Editable initial={poNumber ?? ''} className="min-w-24 flex-1 font-bold" />
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Items */}
           <table className="mt-4 w-full border-collapse text-[12px]">
             <thead>
-              <tr className="bg-[#003366] text-white">
-                <th className="border border-[#003366] px-2 py-1.5 text-center">S/N</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-center">IMAGE</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-left">DESCRIPTION</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-center">UOM</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-center">QUANTITY</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-right">UNIT PRICE</th>
-                <th className="border border-[#003366] px-2 py-1.5 text-right">TOTAL AMOUNT</th>
+              <tr>
+                <th className="w-10 border border-black px-2 py-1.5 text-center font-bold">S/N</th>
+                <th className="w-28 border border-black px-2 py-1.5 text-center font-bold">IMAGE</th>
+                <th className="border border-black px-2 py-1.5 text-center font-bold">DESCRIPTION</th>
+                <th className="w-16 border border-black px-2 py-1.5 text-center font-bold">UOM</th>
+                <th className="w-20 border border-black px-2 py-1.5 text-center font-bold">QUANTITY</th>
+                <th className="w-28 border border-black px-2 py-1.5 text-center font-bold">UNIT PRICE</th>
+                <th className="w-28 border border-black px-2 py-1.5 text-center font-bold">TOTAL AMOUNT</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, i) => (
                 <tr key={row.key}>
-                  <td className="border border-[#9aa7b5] px-2 py-1 text-center align-middle tabular-nums">{String(i + 1).padStart(3, '0')}</td>
-                  <td className="border border-[#9aa7b5] p-1 text-center align-middle">
+                  <td className="border border-black px-2 py-1 text-center align-middle tabular-nums">{String(i + 1).padStart(3, '0')}</td>
+                  <td className="border border-black p-1 text-center align-middle">
                     <ImageUpload
                       cacheKey={itemImageKey(row.name)}
                       value={row.image}
                       onChange={(url) => patchRow(i, { image: url })}
-                      className="mx-auto h-[100px] w-[100px]"
+                      className={cn('mx-auto', row.image ? 'h-[100px] w-[100px]' : 'h-9 w-[100px]')}
                       emptyLabel="📷 add image"
                     />
                   </td>
-                  <td className="border border-[#9aa7b5] px-2 py-1 align-middle">
+                  <td className="border border-black px-2 py-1 align-middle font-bold">
                     <Editable block initial={row.name} className="w-full" />
                   </td>
-                  <td className="border border-[#9aa7b5] px-2 py-1 text-center align-middle">
+                  <td className="border border-black px-2 py-1 text-center align-middle">
                     <Editable initial="SET" className="min-w-8 text-center" />
                   </td>
-                  <td className="border border-[#9aa7b5] px-2 py-1 text-center align-middle tabular-nums">
+                  <td className="border border-black px-2 py-1 text-center align-middle tabular-nums">
                     <Editable initial={String(row.qty)} className="min-w-8 text-center" onText={(t) => patchRow(i, { qty: parseCurrency(t) })} />
                   </td>
-                  <td className="border border-[#9aa7b5] px-2 py-1 text-right align-middle tabular-nums">
-                    <Editable initial={money(row.price)} className="min-w-14 text-right" onText={(t) => patchRow(i, { price: parseCurrency(t) })} />
+                  <td className="border border-black px-2 py-1 text-right align-middle tabular-nums">
+                    <Editable initial={moneyPlain(row.price)} className="min-w-14 text-right" onText={(t) => patchRow(i, { price: parseCurrency(t) })} />
                   </td>
-                  <td className="border border-[#9aa7b5] px-2 py-1 text-right align-middle tabular-nums">{money(round2(row.qty * row.price))}</td>
+                  <td className="border border-black px-2 py-1 text-right align-middle font-bold tabular-nums">{money(round2(row.qty * row.price))}</td>
                 </tr>
               ))}
             </tbody>
+            {/* Totals — table rows so the amounts align with the last column */}
+            <tfoot>
+              <tr>
+                <td colSpan={6} className="border border-black px-2 py-1 text-right font-bold">
+                  VATABLE SALES:
+                </td>
+                <td className="border border-black px-2 py-1 text-right font-bold tabular-nums">₱{money(totals.vatableSales)}</td>
+              </tr>
+              <tr>
+                <td colSpan={6} className="border border-black px-2 py-1 text-right font-bold">
+                  {vatMode === 'exempt' ? 'VAT (0%):' : 'VAT (12%):'}
+                </td>
+                <td className="border border-black px-2 py-1 text-right font-bold tabular-nums">₱{money(totals.vat)}</td>
+              </tr>
+              {lessWht && (
+                <tr>
+                  <td colSpan={6} className="border border-black px-2 py-1 text-right font-bold">
+                    LESS 1% WHT:
+                  </td>
+                  <td className="border border-black px-2 py-1 text-right font-bold tabular-nums">(₱{money(totals.wht)})</td>
+                </tr>
+              )}
+              <tr className="text-[14px]">
+                <td colSpan={6} className="border-2 border-black px-2 py-1.5 text-right font-bold">
+                  GRAND TOTAL AMOUNT
+                </td>
+                <td className="border-2 border-black px-2 py-1.5 text-right font-bold tabular-nums">₱{money(totals.grandTotal)}</td>
+              </tr>
+            </tfoot>
           </table>
 
-          {/* Totals */}
-          <div className="mt-2 ml-auto w-72 text-[12px]">
-            <div className="flex justify-between px-2 py-0.5">
-              <span className="font-semibold">VATable Sales:</span>
-              <span className="tabular-nums">{money(totals.vatableSales)}</span>
-            </div>
-            <div className="flex justify-between px-2 py-0.5">
-              <span className="font-semibold">{vatMode === 'exempt' ? 'VAT (0%):' : 'VAT (12%):'}</span>
-              <span className="tabular-nums">{money(totals.vat)}</span>
-            </div>
-            {lessWht && (
-              <div className="flex justify-between px-2 py-0.5 font-semibold text-[#c0392b]">
-                <span>LESS 1% WHT:</span>
-                <span className="tabular-nums">({money(totals.wht)})</span>
-              </div>
-            )}
-            <div className="mt-0.5 flex justify-between border-t-2 border-[#003366] bg-[#eef5ff] px-2 py-1 font-bold text-[#003366]">
-              <span>GRAND TOTAL:</span>
-              <span className="tabular-nums">{money(totals.grandTotal)}</span>
-            </div>
-          </div>
-
           {/* Lower blocks */}
-          <div className="mt-6 flex justify-between gap-8 text-[11px]">
+          <div className="mt-5 flex gap-6 text-[11px]">
             <div className="flex-1 space-y-3">
               <div>
-                <p className="font-bold text-[#003366]">PAYMENT DETAILS</p>
-                <p>Bank: SECURITY BANK</p>
-                <p>Account Name: NAM BUILDERS AND SUPPLY CORP.</p>
-                <p>Account No: 0000079551887</p>
+                <p className="text-[12px] font-bold">PAYMENT DETAILS</p>
+                <div className="flex gap-1">
+                  <span className="w-28 shrink-0 font-bold">BANK NAME</span>
+                  <span>: SECURITY BANK</span>
+                </div>
+                <div className="flex gap-1">
+                  <span className="w-28 shrink-0 font-bold">ACCOUNT NAME</span>
+                  <span>: NAM BUILDERS AND SUPPLY CORP.</span>
+                </div>
+                <div className="flex gap-1">
+                  <span className="w-28 shrink-0 font-bold">ACCOUNT NO.</span>
+                  <span className="font-bold">: 0000079551887</span>
+                </div>
               </div>
               <div>
-                <p className="font-bold text-[#003366]">CHECK DETAILS</p>
-                <p>
-                  Payable to: <Editable initial="NAM BUILDERS AND SUPPLY CORP." className="min-w-40" />
-                </p>
+                <p className="text-[12px] font-bold">CHECK DETAILS</p>
+                <div className="flex gap-1">
+                  <span className="w-28 shrink-0 font-bold">Name</span>
+                  <span>
+                    : <Editable initial="NAM BUILDERS AND SUPPLY CORP" className="min-w-40" />
+                  </span>
+                </div>
               </div>
               <div>
-                <p className="font-bold text-[#003366]">TERMS AND CONDITION</p>
-                <p>
-                  Payment Terms: <Editable initial={paymentTerm ?? ''} className="min-w-16" />
-                </p>
-                <p>
-                  Delivery Terms: <Editable initial="4-6" className="min-w-8 text-center" /> working days upon receipt of P.O.
-                </p>
-                <p>
-                  Quality Terms: Replacement within <Editable initial="7" className="min-w-6 text-center" /> days for defective items.
-                </p>
-                <p>
-                  Validity: <Editable initial="1 month" className="min-w-12" />
-                </p>
-              </div>
-              <div>
-                <p className="font-bold text-[#003366]">REMARKS</p>
-                <Editable block initial={remarks ?? ''} className="min-h-6 w-full" />
+                <p className="text-[12px] font-bold">TERMS AND CONDITION</p>
+                <div className="mt-1 space-y-2 text-[10px]">
+                  <div>
+                    <p className="font-bold underline">Payment Terms</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      <li>If there are any price change NAM BUILDERS AND SUPPLY CORP will resend a quotation prior to process an order.</li>
+                      <li>Check or Cash Payment must be collected by NAM BUILDERS AND SUPPLY CORP.</li>
+                      <li>Only items stated in this quotation shall be stated in the PURCHASE ORDER.</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-bold underline">Delivery Terms</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      <li>
+                        Client shall provide weekly projected requirements and <Editable initial="4-6" className="min-w-6 text-center font-bold" /> days
+                        lead time for planning purpose. Any modification in the daily should be communicated twenty-four (24) hours before the schedule.
+                      </li>
+                      <li>Client Scheduled delivery on Monday-Friday.</li>
+                      <li>
+                        Client Authorized Representative must be present at the company to acknowledge the products and quantity described on the
+                        Delivery Receiving.
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-bold underline">Quality Terms</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      <li>Client Authorized Representative must signed the Receiving Inspection Stamp.</li>
+                      <li>
+                        Items reported as damaged or wrong items must be replaced within <Editable initial="7" className="min-w-4 text-center font-bold" />{' '}
+                        days of the reported date (Receiving Inspection Stamp), provided all eligibility criteria are met.
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-bold underline">Validity</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      <li>
+                        <Editable initial="1 month" className="min-w-10 font-bold" /> validity effective receipt of this quotation.
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-bold underline">Remarks / Notes</p>
+                    <Editable block initial={remarks ?? ''} className="mt-1 min-h-10 w-full border border-[#d5dbe3] p-1" />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="w-80">
-              <p className="text-justify">
-                Thank you for giving us the opportunity to serve you. If you have any questions regarding this quotation, please contact us.
-                To accept this quotation, kindly sign below and return a copy to us.
+            <div className="w-72 shrink-0 border-l border-[#555] pl-5">
+              <p>Thank you for giving us the opportunity to do business with you.</p>
+              <p className="mt-3 text-justify">
+                If the terms and conditions in this quotation are acceptable, please indicate your acceptance of them by signing in the space provided
+                below and returning signed counterpart of this proposal to NAM BUILDERS AND SUPPLY CORP. Upon NAM BUILDERS AND SUPPLY CORP received of
+                this quotation, the terms and conditions contained herein shall constitute a binding agreement between your company and NAM BUILDERS
+                AND SUPPLY CORP, effective as of the date NAM BUILDERS AND SUPPLY CORP received.
               </p>
-              <div className="mt-5 flex gap-6">
-                {SIGNATURE_KEYS.map((key, i) => (
-                  <div key={key} className="text-center">
-                    <div className="border-b border-black">
-                      <ImageUpload
-                        cacheKey={key}
-                        value={signatures[i]}
-                        onChange={(url) => setSignatures((sigs) => sigs.map((s, j) => (j === i ? url : s)))}
-                        className="h-[60px] w-[140px]"
-                        emptyLabel="Add E-Sign"
-                      />
-                    </div>
-                    <Editable block initial="" className="mt-1 min-h-4 w-full text-center font-semibold" />
-                    <Editable block initial={i === 0 ? 'Prepared by' : 'Approved by'} className="w-full text-center text-[10px]" />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-8">
-                <p className="font-bold">Conforme:</p>
-                <div className="mt-8 border-b border-black" />
-                <p className="mt-0.5 text-center text-[10px]">Client's Signature over Printed Name / Date</p>
-              </div>
+              <p className="mt-5">Sincerely,</p>
+              <ImageUpload
+                cacheKey={SIGNATURE_KEYS[0]}
+                value={signature}
+                onChange={setSignature}
+                className="mt-1 h-[60px] w-[160px]"
+                emptyLabel="Add E-Sign"
+              />
+              <Editable block initial="ALLYSON ASHLEY AGUILERA" className="text-[13px] font-bold" />
+              <Editable block initial="Sales and Technical Officer" className="text-[10px]" />
+              <p className="mt-6 font-bold">Conforme:</p>
+              <p className="mt-14 text-[10px]">Signature over printed name</p>
             </div>
           </div>
+
         </div>
       </div>
     </div>,

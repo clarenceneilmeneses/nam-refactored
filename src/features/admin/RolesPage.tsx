@@ -63,7 +63,7 @@ export function RolesPage() {
   const unusedRoles = roleList.filter((r) => (userCounts.get(r.id) ?? 0) === 0).length
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <PageHeader
         title="Roles"
         subtitle="Permissions are enforced at the database (RLS) — changes apply on each user’s next data fetch, so affected users may need to refresh."
@@ -79,7 +79,7 @@ export function RolesPage() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <StatCard tone="accent" icon="shield" label="Roles" value={roleList.length.toLocaleString()} />
         <StatCard tone="neutral" icon="key" label="Permissions" value={permCols.length.toLocaleString()} />
         <StatCard tone={unusedRoles > 0 ? 'warning' : 'neutral'} icon="group" label="Roles with no users" value={unusedRoles.toLocaleString()} />

@@ -1,7 +1,6 @@
 import { Fragment, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { formatPeso } from '@/lib/format'
-import { GREEN, INDIGO } from './palette'
 import type { MatrixCategory } from './aggregate'
 
 /** Expandable category → items drill-down table; respects all global filters. */
@@ -46,12 +45,8 @@ export function SalesMatrix({ data }: { data: MatrixCategory[] }) {
                   </span>
                 </td>
                 <td className="px-2 py-2 text-right">{cat.qty.toLocaleString()}</td>
-                <td className="px-2 py-2 text-right font-medium" style={{ color: INDIGO }}>
-                  {formatPeso(cat.revenue)}
-                </td>
-                <td className="px-2 py-2 text-right font-medium" style={{ color: GREEN }}>
-                  {formatPeso(cat.profit)}
-                </td>
+                <td className="px-2 py-2 text-right font-medium text-accent-strong">{formatPeso(cat.revenue)}</td>
+                <td className="px-2 py-2 text-right font-medium text-good-text">{formatPeso(cat.profit)}</td>
               </tr>
               {isOpen && (
                 <tr className="border-b border-hairline">

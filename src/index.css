@@ -111,22 +111,34 @@ h1, h2, h3, h4 {
 }
 .fq-editable {
   outline: none;
-  border-bottom: 1px dashed #9aa7b5;
+  border-bottom: 1px dashed #2a78d6;
+  background: #eaf3ff;
   min-width: 1.5rem;
   display: inline-block;
 }
 .fq-editable:hover {
-  background: #f4f8ff;
+  background: #d8e9ff;
 }
 .fq-editable:focus {
-  background: #eef5ff;
-  border-bottom-color: #2a78d6;
+  background: #cfe4ff;
+  border-bottom-color: #1259ab;
+}
+
+/* Compact tables (Settings → System). Scoped to <main> so portaled documents
+   (e.g. the printable quotation) keep their own spacing. */
+html[data-density='compact'] main table th,
+html[data-density='compact'] main table td {
+  padding-top: 0.3125rem;
+  padding-bottom: 0.3125rem;
 }
 
 @media print {
+  /* Zero page margin: the browser prints its date/time header and URL footer
+     inside the page margin area, so removing the margin removes them. The
+     10mm breathing room moves onto the document itself (padding below). */
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 0;
   }
   /* Print only the formal document. The preview portals straight under
      <body>, so everything else (app root, toasts) is removed from layout and
@@ -159,7 +171,7 @@ h1, h2, h3, h4 {
   }
   #formal-quote-doc {
     box-shadow: none !important;
-    padding: 0 !important;
+    padding: 10mm 12mm !important;
     margin: 0 !important;
   }
   /* Strip the on-screen editing affordances */

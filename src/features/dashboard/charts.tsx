@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react'
 import {
   Bar,
   BarChart,
@@ -5,7 +6,6 @@ import {
   Cell,
   ComposedChart,
   LabelList,
-  Legend,
   Line,
   Pie,
   PieChart,
@@ -16,27 +16,22 @@ import {
   YAxis,
   type TooltipContentProps,
 } from 'recharts'
-import { CHART_INK } from '@/lib/chart-palette'
+import { useTheme } from '@/hooks/useTheme'
 import { formatPeso } from '@/lib/format'
-import { CATEGORY_PALETTE, GREEN, INDIGO, RED, SKY, YELLOW, managerColor, managerPillText } from './palette'
+import { CHART_THEMES, categoryColor, managerColor, managerPillText, type ChartTheme } from './palette'
 import type { CategoryPerf, CompanyPerf, ManagerPerf, NamedTotal, TimelinePoint } from './aggregate'
 
 const compact = new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 })
-const axisTick = { fill: CHART_INK.muted, fontSize: 11 }
 
 function pesoCompact(v: number) {
   return `₱${compact.format(v)}`
 }
 
-const tooltipStyle = {
-  backgroundColor: '#fcfcfb',
-  border: '1px solid #e1e0d9',
-  borderRadius: 8,
-  fontSize: 12,
-  color: '#0b0b0b',
+/** Resolves the validated chart theme for the active light/dark mode. */
+function useChartTheme(): ChartTheme {
+  const { resolved } = useTheme()
+  return CHART_THEMES[resolved]
 }
-
-const tooltipCursor = { fill: 'rgba(11,11,11,0.04)' }
 
 function truncate(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
@@ -64,6 +59,19 @@ function ChartLegend({ items, className = '' }: { items: LegendItem[]; className
   )
 }
 
+/** Donut with a GA-style headline in the hole. Overlay is pointer-transparent so tooltips still work. */
+function DonutCenter({ value, caption, children }: { value: ReactNode; caption: string; children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[22px] leading-tight font-bold tabular-nums text-ink">{value}</span>
+        <span className="text-[11px] font-medium text-ink-muted">{caption}</span>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------- 1. Sales Performance
 
 export function SalesPerformanceChart({
@@ -75,27 +83,21 @@ export function SalesPerformanceChart({
   minTarget: number
   maxTarget: number
 }) {
+  const theme = useChartTheme()
+  const axisTick = { fill: theme.ink, fontSize: 11 }
   return (
     <div>
       <ResponsiveContainer width="100%" height={320}>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 16, left: 12 }}>
-          <CartesianGrid stroke={CHART_INK.grid} strokeWidth={1} vertical={false} />
-          <XAxis
-            dataKey="label"
-            tick={axisTick}
-            tickLine={false}
-            axisLine={{ stroke: CHART_INK.baseline }}
-            minTickGap={24}
-            label={{ value: 'Timeline', position: 'insideBottom', offset: -12, fill: CHART_INK.muted, fontSize: 11 }}
-          />
+        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 4 }}>
+          <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
+          <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} minTickGap={24} />
           <YAxis
             yAxisId="revenue"
             tick={axisTick}
             tickLine={false}
             axisLine={false}
             tickFormatter={pesoCompact}
-            width={64}
-            label={{ value: 'Revenue (PHP)', angle: -90, position: 'insideLeft', fill: CHART_INK.muted, fontSize: 11 }}
+            width={56}
           />
           <YAxis
             yAxisId="margin"
@@ -104,52 +106,40 @@ export function SalesPerformanceChart({
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `${v}%`}
-            width={52}
-            label={{ value: 'Margin (%)', angle: 90, position: 'insideRight', fill: CHART_INK.muted, fontSize: 11 }}
+            width={44}
           />
           <Tooltip
-            contentStyle={tooltipStyle}
-            cursor={tooltipCursor}
+            contentStyle={theme.tooltip}
+            cursor={{ fill: theme.cursorFill }}
             formatter={(value, name) =>
               name === 'Profit Margin'
                 ? [`${Number(value).toFixed(1)}%`, String(name)]
                 : [formatPeso(Number(value)), String(name)]
             }
           />
-          <Bar yAxisId="revenue" dataKey="revenue" name="Revenue" fill={INDIGO} fillOpacity={0.45} radius={[4, 4, 0, 0]} />
-          <Line
-            yAxisId="revenue"
-            dataKey="revenue"
-            name="Sales Trend"
-            type="monotone"
-            stroke={INDIGO}
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
-          />
+          <Bar yAxisId="revenue" dataKey="revenue" name="Revenue" fill={theme.primary} radius={[4, 4, 0, 0]} maxBarSize={36} />
           <Line
             yAxisId="margin"
             dataKey="margin"
             name="Profit Margin"
             type="monotone"
-            stroke={YELLOW}
+            stroke={theme.margin}
             strokeWidth={2}
             strokeDasharray="6 4"
             dot={false}
-            activeDot={{ r: 4 }}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: theme.surface }}
           />
-          <ReferenceLine yAxisId="revenue" y={maxTarget} stroke={GREEN} strokeWidth={1.5} strokeDasharray="6 6" />
-          <ReferenceLine yAxisId="revenue" y={minTarget} stroke={RED} strokeWidth={1.5} strokeDasharray="6 6" />
+          <ReferenceLine yAxisId="revenue" y={maxTarget} stroke={theme.good} strokeWidth={1.5} strokeDasharray="6 6" />
+          <ReferenceLine yAxisId="revenue" y={minTarget} stroke={theme.critical} strokeWidth={1.5} strokeDasharray="6 6" />
         </ComposedChart>
       </ResponsiveContainer>
       <ChartLegend
         className="mt-2"
         items={[
-          { label: 'Revenue', color: INDIGO },
-          { label: 'Sales Trend', color: INDIGO },
-          { label: 'Profit Margin', color: YELLOW, dashed: true },
-          { label: 'Max Target', color: GREEN, dashed: true },
-          { label: 'Min Target', color: RED, dashed: true },
+          { label: 'Revenue', color: theme.primary },
+          { label: 'Profit Margin', color: theme.margin, dashed: true },
+          { label: 'Max Target', color: theme.good, dashed: true },
+          { label: 'Min Target', color: theme.critical, dashed: true },
         ]}
       />
     </div>
@@ -159,46 +149,45 @@ export function SalesPerformanceChart({
 // ---------------------------------------------------------------- 2. Logistics Status
 
 export function LogisticsDonut({ delivered, pending }: { delivered: number; pending: number }) {
+  const theme = useChartTheme()
+  const total = delivered + pending
   const data = [
-    { name: 'Delivered', value: delivered, color: GREEN },
-    { name: 'Pending', value: pending, color: YELLOW },
+    { name: 'Delivered', value: delivered, color: theme.good },
+    { name: 'Pending', value: pending, color: theme.warning },
   ]
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="70%" outerRadius="92%" stroke="#fcfcfb" strokeWidth={2}>
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
-          ))}
-        </Pie>
-        <Tooltip
-          contentStyle={tooltipStyle}
-          formatter={(value, name) => [`${Number(value).toLocaleString()} orders`, String(name)]}
-        />
-        <Legend
-          layout="vertical"
-          align="right"
-          verticalAlign="middle"
-          iconType="circle"
-          iconSize={8}
-          formatter={(v: string) => <span style={{ color: '#52514e', fontSize: 12 }}>{v}</span>}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <div>
+      <DonutCenter value={`${total ? Math.round((delivered / total) * 100) : 0}%`} caption={`Delivered · ${total.toLocaleString()} orders`}>
+        <ResponsiveContainer width="100%" height={240}>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius="72%" outerRadius="94%" stroke={theme.surface} strokeWidth={2}>
+              {data.map((d) => (
+                <Cell key={d.name} fill={d.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={theme.tooltip}
+              formatter={(value, name) => [`${Number(value).toLocaleString()} orders`, String(name)]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </DonutCenter>
+      <ChartLegend className="mt-2" items={data.map((d) => ({ label: d.name, color: d.color }))} />
+    </div>
   )
 }
 
 // ---------------------------------------------------------------- 3. Company Performance
 
-function CompanyTooltip(props: TooltipContentProps) {
-  const { active, payload } = props
+function CompanyTooltip(props: TooltipContentProps & { theme: ChartTheme }) {
+  const { active, payload, theme } = props
   if (!active || !payload || payload.length === 0) return null
   const entry = payload[0].payload as CompanyPerf
   return (
-    <div style={tooltipStyle} className="px-3 py-2">
+    <div style={theme.tooltip} className="px-3 py-2">
       <p className="font-medium">{entry.company}</p>
       <p className="tabular-nums">{formatPeso(entry.total)}</p>
-      <p className="text-ink-muted">Account Manager: {entry.manager}</p>
+      <p style={{ color: theme.ink }}>Account Manager: {entry.manager}</p>
     </div>
   )
 }
@@ -214,6 +203,8 @@ export function CompanyPerformanceChart({
   maxTarget: number
   onToggle: (company: string) => void
 }) {
+  const theme = useChartTheme()
+  const axisTick = { fill: theme.ink, fontSize: 11 }
   const managers = [...new Set(data.map((d) => d.manager))]
   return (
     <div>
@@ -230,8 +221,8 @@ export function CompanyPerformanceChart({
         <span className="ml-auto">
           <ChartLegend
             items={[
-              { label: 'Max Target', color: GREEN, dashed: true },
-              { label: 'Min Target', color: RED, dashed: true },
+              { label: 'Max Target', color: theme.good, dashed: true },
+              { label: 'Min Target', color: theme.critical, dashed: true },
             ]}
           />
         </span>
@@ -239,38 +230,28 @@ export function CompanyPerformanceChart({
       <div className="overflow-x-auto pb-1">
         <div style={{ width: Math.max(800, data.length * 60), height: 320 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 20, right: 8, bottom: 4, left: 12 }}>
-              <CartesianGrid stroke={CHART_INK.grid} strokeWidth={1} vertical={false} />
+            <BarChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 12 }}>
+              <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
               <XAxis
                 dataKey="company"
                 tick={{ ...axisTick, fontSize: 10 }}
                 tickLine={false}
-                axisLine={{ stroke: CHART_INK.baseline }}
+                axisLine={{ stroke: theme.baseline }}
                 tickFormatter={(name: string) => name.split(' ')[0]}
                 interval={0}
                 angle={-45}
                 textAnchor="end"
                 height={64}
               />
-              <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={pesoCompact} width={64} />
-              <Tooltip content={CompanyTooltip} cursor={tooltipCursor} />
-              <Bar
-                dataKey="total"
-                radius={[4, 4, 0, 0]}
-                onClick={(_, index) => onToggle(data[index].company)}
-              >
+              <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={pesoCompact} width={56} />
+              <Tooltip content={(p) => <CompanyTooltip {...p} theme={theme} />} cursor={{ fill: theme.cursorFill }} />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={40} onClick={(_, index) => onToggle(data[index].company)}>
                 {data.map((entry) => (
                   <Cell key={entry.company} fill={managerColor(entry.manager)} cursor="pointer" />
                 ))}
-                <LabelList
-                  dataKey="total"
-                  position="top"
-                  formatter={(v) => pesoCompact(Number(v))}
-                  style={{ fill: CHART_INK.muted, fontSize: 10 }}
-                />
               </Bar>
-              <ReferenceLine y={maxTarget} stroke={GREEN} strokeWidth={1.5} strokeDasharray="6 6" />
-              <ReferenceLine y={minTarget} stroke={RED} strokeWidth={1.5} strokeDasharray="6 6" />
+              <ReferenceLine y={maxTarget} stroke={theme.good} strokeWidth={1.5} strokeDasharray="6 6" />
+              <ReferenceLine y={minTarget} stroke={theme.critical} strokeWidth={1.5} strokeDasharray="6 6" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -281,12 +262,12 @@ export function CompanyPerformanceChart({
 
 // ---------------------------------------------------------------- 4. Account Managers
 
-function ManagerTooltip(props: TooltipContentProps) {
-  const { active, payload } = props
+function ManagerTooltip(props: TooltipContentProps & { theme: ChartTheme }) {
+  const { active, payload, theme } = props
   if (!active || !payload || payload.length === 0) return null
   const entry = payload[0].payload as ManagerPerf
   return (
-    <div style={tooltipStyle} className="px-3 py-2">
+    <div style={theme.tooltip} className="px-3 py-2">
       <p className="font-medium">{entry.manager}</p>
       <p className="tabular-nums">
         {formatPeso(entry.total)} ({entry.companies} {entry.companies === 1 ? 'Company' : 'Companies'})
@@ -296,21 +277,23 @@ function ManagerTooltip(props: TooltipContentProps) {
 }
 
 export function ManagersChart({ data, onToggle }: { data: ManagerPerf[]; onToggle: (manager: string) => void }) {
+  const theme = useChartTheme()
+  const axisTick = { fill: theme.ink, fontSize: 11 }
   return (
     <ResponsiveContainer width="100%" height={Math.max(240, data.length * 44 + 40)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, bottom: 0, left: 4 }}>
-        <CartesianGrid stroke={CHART_INK.grid} strokeWidth={1} horizontal={false} />
-        <XAxis type="number" tick={axisTick} tickLine={false} axisLine={{ stroke: CHART_INK.baseline }} tickFormatter={pesoCompact} />
+        <CartesianGrid stroke={theme.grid} strokeWidth={1} horizontal={false} />
+        <XAxis type="number" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} tickFormatter={pesoCompact} />
         <YAxis
           type="category"
           dataKey="manager"
           width={92}
-          tick={{ ...axisTick, fontSize: 11 }}
+          tick={axisTick}
           tickLine={false}
           axisLine={false}
           tickFormatter={(name: string) => truncate(name, 12)}
         />
-        <Tooltip content={ManagerTooltip} cursor={tooltipCursor} />
+        <Tooltip content={(p) => <ManagerTooltip {...p} theme={theme} />} cursor={{ fill: theme.cursorFill }} />
         <Bar dataKey="total" radius={[0, 4, 4, 0]} barSize={20} onClick={(_, index) => onToggle(data[index].manager)}>
           {data.map((entry) => (
             <Cell key={entry.manager} fill={managerColor(entry.manager)} cursor="pointer" />
@@ -319,7 +302,7 @@ export function ManagersChart({ data, onToggle }: { data: ManagerPerf[]; onToggl
             dataKey="total"
             position="right"
             formatter={(v) => pesoCompact(Number(v))}
-            style={{ fill: CHART_INK.muted, fontSize: 10 }}
+            style={{ fill: theme.label, fontSize: 10 }}
           />
         </Bar>
       </BarChart>
@@ -338,28 +321,32 @@ export function CategoryDonut({
   activeCategory: string | null
   onToggle: (category: string) => void
 }) {
+  const theme = useChartTheme()
+  const total = data.reduce((sum, d) => sum + d.total, 0)
   return (
     <div>
-      <ResponsiveContainer width="100%" height={170}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="total"
-            nameKey="category"
-            innerRadius="70%"
-            outerRadius="95%"
-            stroke="#ffffff"
-            strokeWidth={2}
-            onClick={(_, index) => onToggle(data[index].category)}
-            cursor="pointer"
-          >
-            {data.map((entry, i) => (
-              <Cell key={entry.category} fill={CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]} />
-            ))}
-          </Pie>
-          <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [formatPeso(Number(value)), String(name)]} />
-        </PieChart>
-      </ResponsiveContainer>
+      <DonutCenter value={pesoCompact(total)} caption="Total">
+        <ResponsiveContainer width="100%" height={170}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="total"
+              nameKey="category"
+              innerRadius="72%"
+              outerRadius="95%"
+              stroke={theme.surface}
+              strokeWidth={2}
+              onClick={(_, index) => onToggle(data[index].category)}
+              cursor="pointer"
+            >
+              {data.map((entry, i) => (
+                <Cell key={entry.category} fill={categoryColor(theme, i)} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={theme.tooltip} formatter={(value, name) => [formatPeso(Number(value)), String(name)]} />
+          </PieChart>
+        </ResponsiveContainer>
+      </DonutCenter>
       <div className="slim-scrollbar mt-2 max-h-[130px] space-y-0.5 overflow-y-auto pr-1">
         {data.map((entry, i) => (
           <button
@@ -370,10 +357,7 @@ export function CategoryDonut({
               activeCategory === entry.category ? 'bg-ink/5 font-medium' : ''
             }`}
           >
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length] }}
-            />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(theme, i) }} />
             <span className="min-w-0 flex-1 truncate text-ink-secondary">{entry.category}</span>
             <span className="tabular-nums text-ink">{formatPeso(entry.total)}</span>
           </button>
@@ -386,38 +370,42 @@ export function CategoryDonut({
 // ---------------------------------------------------------------- 6. Collection Status
 
 export function CollectionDonut({ paid, unpaid }: { paid: number; unpaid: number }) {
+  const theme = useChartTheme()
+  const total = paid + unpaid
   const data = [
-    { name: 'Paid', value: paid, color: GREEN },
-    { name: 'Unpaid', value: unpaid, color: RED },
+    { name: 'Paid', value: paid, color: theme.good },
+    { name: 'Unpaid', value: unpaid, color: theme.critical },
   ]
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="65%" outerRadius="90%" stroke="#fcfcfb" strokeWidth={2}>
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
-          ))}
-        </Pie>
-        <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [formatPeso(Number(value)), String(name)]} />
-        <Legend
-          verticalAlign="bottom"
-          iconType="circle"
-          iconSize={8}
-          formatter={(v: string) => <span style={{ color: '#52514e', fontSize: 12 }}>{v}</span>}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <div>
+      <DonutCenter value={`${total ? Math.round((paid / total) * 100) : 0}%`} caption="Collected">
+        <ResponsiveContainer width="100%" height={240}>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius="68%" outerRadius="92%" stroke={theme.surface} strokeWidth={2}>
+              {data.map((d) => (
+                <Cell key={d.name} fill={d.color} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={theme.tooltip} formatter={(value, name) => [formatPeso(Number(value)), String(name)]} />
+          </PieChart>
+        </ResponsiveContainer>
+      </DonutCenter>
+      <ChartLegend className="mt-2" items={data.map((d) => ({ label: d.name, color: d.color }))} />
+    </div>
   )
 }
 
 // ---------------------------------------------------------------- 7 & 8. Top Products / Supplier Costs
 
-export function NamedTotalsBarChart({ data, color }: { data: NamedTotal[]; color?: string }) {
+export function NamedTotalsBarChart({ data, tone = 'products' }: { data: NamedTotal[]; tone?: 'products' | 'costs' }) {
+  const theme = useChartTheme()
+  const axisTick = { fill: theme.ink, fontSize: 11 }
+  const fill = tone === 'costs' ? theme.costs : theme.products
   return (
     <ResponsiveContainer width="100%" height={Math.max(220, data.length * 30 + 40)}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }}>
-        <CartesianGrid stroke={CHART_INK.grid} strokeWidth={1} horizontal={false} />
-        <XAxis type="number" tick={axisTick} tickLine={false} axisLine={{ stroke: CHART_INK.baseline }} tickFormatter={pesoCompact} />
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 52, bottom: 0, left: 4 }}>
+        <CartesianGrid stroke={theme.grid} strokeWidth={1} horizontal={false} />
+        <XAxis type="number" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} tickFormatter={pesoCompact} />
         <YAxis
           type="category"
           dataKey="name"
@@ -427,8 +415,15 @@ export function NamedTotalsBarChart({ data, color }: { data: NamedTotal[]; color
           axisLine={false}
           tickFormatter={(name: string) => truncate(name, 15)}
         />
-        <Tooltip contentStyle={tooltipStyle} formatter={(value) => [formatPeso(Number(value)), 'Total']} cursor={tooltipCursor} />
-        <Bar dataKey="total" fill={color ?? SKY} radius={[0, 4, 4, 0]} barSize={16} />
+        <Tooltip contentStyle={theme.tooltip} formatter={(value) => [formatPeso(Number(value)), 'Total']} cursor={{ fill: theme.cursorFill }} />
+        <Bar dataKey="total" fill={fill} radius={[0, 4, 4, 0]} barSize={16}>
+          <LabelList
+            dataKey="total"
+            position="right"
+            formatter={(v) => pesoCompact(Number(v))}
+            style={{ fill: theme.label, fontSize: 10 }}
+          />
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   )

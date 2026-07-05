@@ -72,7 +72,7 @@ export function UsersPage() {
   if (error) return <p className="text-sm text-critical">Couldn’t load users: {(error as Error).message}</p>
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       <PageHeader
         title="Users"
         subtitle="Staff accounts and their roles. New users can sign in right away."
@@ -89,7 +89,7 @@ export function UsersPage() {
       />
 
       {!isLoading && (users?.length ?? 0) > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           <StatCard tone="accent" icon="group" label="Total users" value={(users?.length ?? 0).toLocaleString()} />
           <StatCard tone={superAdminCount > 1 ? 'warning' : 'neutral'} icon="admin_panel_settings" label="Super Admins" value={superAdminCount.toLocaleString()} />
           <StatCard tone={noLoginCount > 0 ? 'warning' : 'neutral'} icon="person_off" label="Without login yet" value={noLoginCount.toLocaleString()} />

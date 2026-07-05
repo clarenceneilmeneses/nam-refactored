@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchAll, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
 import type { PermissionRow, RolePermissionRow, RoleRow, SystemLogRow, UserRow } from '@/types/database'
@@ -221,10 +221,36 @@ export function useDeleteRole() {
 export function useSystemLogs() {
   return useQuery({
     queryKey: ['system_logs'],
-    queryFn: () =>
-      fetchAll<SystemLogRow>((from, to) =>
-        supabase.from('system_logs').select('*').order('id', { ascending: false }).range(from, to),
-      ),
+    // The logs table is far bigger than the others (13k+ rows), so instead of
+    // fetchAll's sequential paging, grab the first page with an exact count
+    // and fetch the remaining pages in parallel (~2 round trips total).
+    // Ascending id keeps each page's range stable against concurrent inserts;
+    // reversed at the end so the newest entries come first.
+    queryFn: async (): Promise<SystemLogRow[]> => {
+      const pageSize = 1000
+      const first = await supabase
+        .from('system_logs')
+        .select('*', { count: 'exact' })
+        .order('id', { ascending: true })
+        .range(0, pageSize - 1)
+      if (first.error) throw new Error(first.error.message)
+      const rows: SystemLogRow[] = first.data ?? []
+      const total = first.count ?? rows.length
+      if (rows.length === pageSize && total > pageSize) {
+        const remaining = Math.ceil((total - pageSize) / pageSize)
+        const batches = await Promise.all(
+          Array.from({ length: remaining }, (_, i) => {
+            const from = (i + 1) * pageSize
+            return supabase.from('system_logs').select('*').order('id', { ascending: true }).range(from, from + pageSize - 1)
+          }),
+        )
+        for (const batch of batches) {
+          if (batch.error) throw new Error(batch.error.message)
+          rows.push(...(batch.data ?? []))
+        }
+      }
+      return rows.reverse()
+    },
     staleTime: 30_000,
   })
 }

@@ -19,7 +19,6 @@ import {
 import { useDashboardData } from './useDashboardData'
 import { DrillChips, FilterBar } from './FilterBar'
 import { SalesMatrix } from './SalesMatrix'
-import { RED, SKY } from './palette'
 import {
   CategoryDonut,
   CollectionDonut,
@@ -204,7 +203,7 @@ export function DashboardPage() {
           loading={isLoading}
           isEmpty={data.topProducts.length === 0}
         >
-          <NamedTotalsBarChart data={data.topProducts} color={SKY} />
+          <NamedTotalsBarChart data={data.topProducts} tone="products" />
         </ChartCard>
 
         <ChartCard
@@ -213,7 +212,7 @@ export function DashboardPage() {
           loading={isLoading}
           isEmpty={data.supplierCosts.length === 0}
         >
-          <NamedTotalsBarChart data={data.supplierCosts} color={RED} />
+          <NamedTotalsBarChart data={data.supplierCosts} tone="costs" />
         </ChartCard>
       </div>
 
@@ -242,8 +241,9 @@ function GrowthBadge({ growth }: { growth: Growth }) {
   return (
     <div className="mt-1">
       <span
-        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums"
-        style={up ? { backgroundColor: '#dcfce7', color: '#15803d' } : { backgroundColor: '#fee2e2', color: '#b91c1c' }}
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${
+          up ? 'bg-good/15 text-good-text' : 'bg-critical/15 text-critical-text'
+        }`}
       >
         <Icon className="h-3 w-3" />
         {Math.abs(growth.percent).toFixed(1)}% ({growth.amount >= 0 ? '+' : '−'}
@@ -259,8 +259,9 @@ function TargetBadge({ percent, amount }: { percent: number; amount: number }) {
   const Icon = met ? TrendingUp : Target
   return (
     <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums"
-      style={met ? { backgroundColor: '#dcfce7', color: '#15803d' } : { backgroundColor: '#e0e7ff', color: '#4338ca' }}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${
+        met ? 'bg-good/15 text-good-text' : 'bg-accent-soft text-accent-strong'
+      }`}
     >
       <Icon className="h-3 w-3" />
       {Math.round(percent)}% of {formatPesoWhole(amount)} Target

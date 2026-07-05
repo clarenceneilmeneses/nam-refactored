@@ -73,7 +73,8 @@ const CANDIDATES: Record<string, string[]> = {
   buyer: ['buyer'],
   remarks: ['remarks', 'notes'],
   supplier: ['supplier', 'vendor'],
-  withholding_tax: ['withholdingtax', 'wht'],
+  // 'witholdingtax' (sic): the encoder sheet's header is misspelled.
+  withholding_tax: ['withholdingtax', 'witholdingtax', 'wht'],
   name: ['productname', 'name', 'item', 'product', 'description', 'itemdescription'],
   supplier_price: ['supplierprice', 'suppliersprice', 'price', 'cost', 'unitcost'],
   nam_price: ['namprice', 'namunitprice', 'sellingprice', 'srp'],
