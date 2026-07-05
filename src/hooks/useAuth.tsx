@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import type { PermissionName, UserRow } from '@/types/database'
@@ -39,6 +40,33 @@ export const HOME_ROUTE_OPTIONS: Array<{ path: string; label: string; perms: Per
 ]
 
 export const KEY_HOME_ROUTE = 'nam-home-route'
+
+/** Stable random id identifying THIS browser (users.current_session_id). */
+const KEY_DEVICE_SESSION = 'nam-device-session'
+
+function deviceId(): string {
+  let id = localStorage.getItem(KEY_DEVICE_SESSION)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(KEY_DEVICE_SESSION, id)
+  }
+  return id
+}
+
+/**
+ * Single-active-device enforcement (09_single_session.sql): every login writes
+ * this browser's device id to the user's row, superseding whichever device
+ * held it. The id is stable per browser, so repeated claims are idempotent.
+ * Errors are swallowed — if the column doesn't exist yet the app keeps
+ * working, just without the one-device rule.
+ */
+async function claimDeviceSession(authId: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ current_session_id: deviceId() })
+    .eq('auth_id', authId)
+  if (error) console.error('Could not claim device session:', error.message)
+}
 
 /**
  * Where a user lands after login. A device preference (Settings → System)
@@ -132,6 +160,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session, reloadKey])
 
+  // One device per account: watch for another login taking over this account
+  // (checked on load, on window focus, and every 30s) and sign this device out.
+  useEffect(() => {
+    if (!session) return
+    const authId = session.user.id
+    let cancelled = false
+    let busy = false
+    async function readDbSid(): Promise<{ ok: boolean; sid: string | null }> {
+      const { data, error } = await supabase
+        .from('users')
+        .select('current_session_id')
+        .eq('auth_id', authId)
+        .maybeSingle()
+      if (error || !data) return { ok: false, sid: null } // column missing / offline — skip quietly
+      return { ok: true, sid: data.current_session_id }
+    }
+    async function check() {
+      if (busy) return
+      busy = true
+      try {
+        const sid = deviceId()
+        const first = await readDbSid()
+        if (cancelled || !first.ok) return
+        if (!first.sid) {
+          // No device holds the account yet (pre-rule session) — claim it.
+          await claimDeviceSession(authId)
+          return
+        }
+        if (first.sid === sid) return
+        // Mismatch — but a login on THIS device may still be writing its
+        // claim. Re-read after a beat and only kick if it's still not ours.
+        await new Promise((r) => setTimeout(r, 2000))
+        if (cancelled) return
+        const second = await readDbSid()
+        if (cancelled || !second.ok || !second.sid || second.sid === sid) return
+        toast.error('Signed out: this account was signed in on another device.', { duration: 8000 })
+        await supabase.auth.signOut({ scope: 'local' })
+      } finally {
+        busy = false
+      }
+    }
+    check()
+    const id = setInterval(check, 30_000)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [session])
+
   const hasPermission = useCallback((perm: PermissionName) => permissions.has(perm), [permissions])
 
   const refreshProfile = useCallback(() => setReloadKey((k) => k + 1), [])
@@ -141,6 +225,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setLoading(false)
     if (!error && data.user) {
+      // Take over as the account's single active device; the previous device
+      // notices the id change and signs itself out.
+      void claimDeviceSession(data.user.id)
       // Audit trail (legacy parity). The profile row hasn't loaded yet, so
       // resolve the legacy users.id here; fire-and-forget, never blocks login.
       void supabase
@@ -159,8 +246,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Log before the session is destroyed — the insert needs the
     // authenticated role to pass RLS. logAction swallows failures.
     if (profile) await logAction(profile.id, 'Logged Out', `User "${profile.username}" logged out`)
+    // Release the device claim so the next login anywhere starts clean.
+    if (session) await supabase.from('users').update({ current_session_id: null }).eq('auth_id', session.user.id)
     await supabase.auth.signOut()
-  }, [profile])
+  }, [profile, session])
 
   const value = useMemo(
     () => ({ session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile }),

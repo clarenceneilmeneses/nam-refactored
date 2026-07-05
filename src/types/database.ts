@@ -99,6 +99,8 @@ export type UserRow = {
   role_id: number | null
   auth_id: string | null
   avatar_url: string | null
+  /** Random id of the one device allowed to stay signed in (09_single_session.sql). */
+  current_session_id: string | null
   created_at: string
 }
 export type UserInsert = Partial<Omit<UserRow, 'id' | 'created_at'>> & { username: string }

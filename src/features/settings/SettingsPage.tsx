@@ -28,6 +28,7 @@ import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { formatDate } from '@/lib/format'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PermissionGate } from '@/components/layout/PermissionGate'
 import { Avatar } from '@/components/shared/Avatar'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { Button } from '@/components/ui/button'
@@ -493,18 +494,21 @@ export function SettingsPage() {
             </Button>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
-            <div className="flex items-start gap-3">
-              <LogOut className="mt-0.5 h-4 w-4 text-ink-muted" />
-              <div>
-                <p className="text-sm font-medium text-ink">Sign out of all devices</p>
-                <p className="text-xs text-ink-muted">Ends every active session, including this one.</p>
+          {/* Admin-only: revoking every session is too powerful for encoder-level roles. */}
+          <PermissionGate perm="manage_users">
+            <div className="flex items-center justify-between gap-4 border-t border-hairline pt-4">
+              <div className="flex items-start gap-3">
+                <LogOut className="mt-0.5 h-4 w-4 text-ink-muted" />
+                <div>
+                  <p className="text-sm font-medium text-ink">Sign out of all devices</p>
+                  <p className="text-xs text-ink-muted">Ends every active session, including this one.</p>
+                </div>
               </div>
+              <Button variant="outline" size="sm" className="text-critical" onClick={() => setSignOutAllOpen(true)}>
+                Sign out everywhere
+              </Button>
             </div>
-            <Button variant="outline" size="sm" className="text-critical" onClick={() => setSignOutAllOpen(true)}>
-              Sign out everywhere
-            </Button>
-          </div>
+          </PermissionGate>
         </CardContent>
       </Card>
 
