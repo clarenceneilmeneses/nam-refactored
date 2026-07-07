@@ -4,6 +4,7 @@ import {
   BarChart3,
   ClipboardList,
   FilePlus2,
+  LineChart,
   FileSpreadsheet,
   FileText,
   History,
@@ -50,7 +51,12 @@ type NavSection = {
 }
 
 const NAV: NavSection[] = [
-  { items: [{ to: '/', label: 'Dashboard', icon: BarChart3, perms: ['view_dashboard'] }] },
+  {
+    items: [
+      { to: '/', label: 'Dashboard', icon: BarChart3, perms: ['view_dashboard'] },
+      { to: '/analytics', label: 'Analytics', icon: LineChart, perms: ['view_dashboard'] },
+    ],
+  },
   {
     heading: 'Sales',
     items: [

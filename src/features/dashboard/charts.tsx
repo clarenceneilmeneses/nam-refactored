@@ -23,12 +23,12 @@ import type { CategoryPerf, CompanyPerf, ManagerPerf, NamedTotal, TimelinePoint 
 
 const compact = new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 })
 
-function pesoCompact(v: number) {
+export function pesoCompact(v: number) {
   return `₱${compact.format(v)}`
 }
 
 /** Resolves the validated chart theme for the active light/dark mode. */
-function useChartTheme(): ChartTheme {
+export function useChartTheme(): ChartTheme {
   const { resolved } = useTheme()
   return CHART_THEMES[resolved]
 }
@@ -37,10 +37,10 @@ function truncate(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-type LegendItem = { label: string; color: string; dashed?: boolean }
+export type LegendItem = { label: string; color: string; dashed?: boolean }
 
 /** Bottom legend with point-style (dot) markers; dashed items get a dash mark instead. */
-function ChartLegend({ items, className = '' }: { items: LegendItem[]; className?: string }) {
+export function ChartLegend({ items, className = '' }: { items: LegendItem[]; className?: string }) {
   return (
     <div className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-1 ${className}`}>
       {items.map((item) => (

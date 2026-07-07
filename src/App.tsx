@@ -7,6 +7,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { RequirePermission, RequireSuperAdmin } from '@/components/layout/PermissionGate'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
+import { AnalyticsPage } from '@/features/analytics/AnalyticsPage'
 import { SalesEntryPage } from '@/features/sales/SalesEntryPage'
 import { RecordsPage } from '@/features/sales/RecordsPage'
 import { QuotationsPage } from '@/features/quotations/QuotationsPage'
@@ -34,6 +35,14 @@ export default function App() {
               element={
                 <RequirePermission perm="view_dashboard">
                   <DashboardPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <RequirePermission perm="view_dashboard">
+                  <AnalyticsPage />
                 </RequirePermission>
               }
             />

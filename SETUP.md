@@ -58,6 +58,13 @@ The Users & Roles page in the app shows who is linked. Once everyone is:
 alter table users drop column if exists password, drop column if exists session_token;
 ```
 
+## 4. Sane-date constraints (data quality)
+
+Run `../10_sane_dates.sql` in the SQL Editor. It adds CHECK constraints so
+`sales`/`quotations` dates must fall in 2000–2099 — the legacy import had typo
+rows like `0206-02-12` (corrected 2026-07-07, see system_logs "Data
+Correction"), and these stop new ones at entry time.
+
 ## Run the app
 
 ```bash

@@ -1,0 +1,233 @@
+import { describe, expect, it } from 'vitest'
+import type { SaleRow } from '@/types/database'
+import { NO_DRILLS } from '../dashboard/filters'
+import {
+  collectionByMonth,
+  filterAnalyticsRows,
+  marginByOrderSize,
+  momOf,
+  monthlySeries,
+  onTimeCollection,
+  orderValueMarginR,
+  repeatClientShare,
+  seasonalityYoY,
+  topShares,
+  weekdayPattern,
+  weeklyTrend,
+  yearsPresent,
+  yoyComparison,
+} from './analyticsLogic'
+
+function sale(patch: Partial<SaleRow>): SaleRow {
+  return {
+    id: 1,
+    date: '2026-01-05',
+    sn: null,
+    po_number: null,
+    company: null,
+    category: null,
+    item: null,
+    quantity_requested: null,
+    suppliers_price: null,
+    total_actual_amount: null,
+    nam_unit_price: null,
+    total_nam_amount: null,
+    total_nam_amount_sub_total: null,
+    income: null,
+    income_percent: null,
+    date_delivered: null,
+    payment_term: null,
+    due_date: null,
+    payment_status: null,
+    date_paid: null,
+    si_number: null,
+    buyer: null,
+    remarks: null,
+    supplier: null,
+    address: null,
+    tin: null,
+    sales_invoice_no: null,
+    contact_person_contact: null,
+    created_at: '2026-01-05T00:00:00Z',
+    is_reserved: null,
+    withholding_tax: null,
+    total_amount_due: null,
+    ...patch,
+  }
+}
+
+describe('yearsPresent / filterAnalyticsRows', () => {
+  const rows = [
+    sale({ date: '2025-03-01', company: 'Acme' }),
+    sale({ date: '2026-01-10', company: 'Beta' }),
+    sale({ date: '2026-06-02', company: 'Acme' }),
+  ]
+
+  it('lists distinct years newest first', () => {
+    expect(yearsPresent(rows)).toEqual(['2026', '2025'])
+  })
+
+  it('filters by year and drills together', () => {
+    const lookup = new Map<string, string>()
+    expect(filterAnalyticsRows(rows, '2026', NO_DRILLS, lookup)).toHaveLength(2)
+    expect(filterAnalyticsRows(rows, '2026', { ...NO_DRILLS, company: 'Acme' }, lookup)).toHaveLength(1)
+    expect(filterAnalyticsRows(rows, 'all', NO_DRILLS, lookup)).toHaveLength(3)
+  })
+
+  it('treats legacy typo dates (year 0206 etc.) as noise everywhere', () => {
+    const dirty = [...rows, sale({ date: '0206-02-15' }), sale({ date: '0004-11-30' })]
+    expect(yearsPresent(dirty)).toEqual(['2026', '2025'])
+    expect(filterAnalyticsRows(dirty, 'all', NO_DRILLS, new Map())).toHaveLength(3)
+    // A typo sale date paid in the real present would otherwise read as ~660k days.
+    const paid = [sale({ date: '0206-02-15', date_paid: '2026-02-20' }), sale({ date: '2026-02-01', date_paid: '2026-02-20' })]
+    const points = collectionByMonth(paid)
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ key: '2026-02', avgDays: 19, invoices: 1 })
+  })
+})
+
+describe('monthlySeries / momOf', () => {
+  const rows = [
+    sale({ date: '2026-01-05', total_nam_amount: 100, income: 20 }),
+    sale({ date: '2026-01-20', total_nam_amount: 100, income: 30 }),
+    sale({ date: '2026-02-10', total_nam_amount: 300, income: 60 }),
+  ]
+
+  it('aggregates revenue, profit, margin and orders per month', () => {
+    const series = monthlySeries(rows)
+    expect(series).toHaveLength(2)
+    expect(series[0]).toMatchObject({ key: '2026-01', revenue: 200, profit: 50, margin: 25, orders: 2 })
+    expect(series[1]).toMatchObject({ key: '2026-02', revenue: 300, orders: 1 })
+  })
+
+  it('computes MoM against the prior month', () => {
+    const series = monthlySeries(rows)
+    expect(momOf(series, (p) => p.revenue)).toEqual({ percent: 50, amount: 100 })
+    expect(momOf(series.slice(0, 1), (p) => p.revenue)).toBeNull()
+  })
+})
+
+describe('weekdayPattern', () => {
+  it('buckets Mon-first and flags peak + below-average days', () => {
+    // 2026-01-05 is a Monday, 2026-01-10 a Saturday.
+    const rows = [
+      sale({ date: '2026-01-05', total_nam_amount: 700 }),
+      sale({ date: '2026-01-10', total_nam_amount: 70 }),
+    ]
+    const pattern = weekdayPattern(rows)
+    expect(pattern[0]).toMatchObject({ day: 'Mon', revenue: 700, peak: true, belowAvg: false })
+    expect(pattern[5]).toMatchObject({ day: 'Sat', revenue: 70, peak: false, belowAvg: true })
+    expect(pattern[6]).toMatchObject({ day: 'Sun', revenue: 0, belowAvg: true })
+  })
+})
+
+describe('seasonalityYoY / yoyComparison', () => {
+  const rows = [
+    sale({ date: '2025-01-15', total_nam_amount: 100 }),
+    sale({ date: '2025-02-15', total_nam_amount: 100 }),
+    sale({ date: '2026-01-15', total_nam_amount: 150 }),
+  ]
+
+  it('pairs the latest year with the one before, per calendar month', () => {
+    const s = seasonalityYoY(rows)
+    expect(s?.currentYear).toBe('2026')
+    expect(s?.previousYear).toBe('2025')
+    expect(s?.points[0]).toEqual({ month: 'Jan', current: 150, previous: 100 })
+    expect(s?.points[1]).toEqual({ month: 'Feb', current: null, previous: 100 })
+  })
+
+  it('compares only overlapping months', () => {
+    const yoy = yoyComparison(seasonalityYoY(rows))
+    expect(yoy).toEqual({ percent: 50, currentTotal: 150, previousTotal: 100 })
+  })
+
+  it('is null when there is no overlap', () => {
+    expect(yoyComparison(seasonalityYoY([sale({ date: '2026-03-01', total_nam_amount: 10 })]))).toBeNull()
+  })
+})
+
+describe('collection metrics', () => {
+  it('averages days to payment per sale month and flags target breaches', () => {
+    const rows = [
+      sale({ date: '2026-01-01', date_paid: '2026-01-11' }), // 10 days
+      sale({ date: '2026-01-01', date_paid: '2026-03-02' }), // 60 days
+      sale({ date: '2026-01-15', date_paid: '2026-01-10' }), // negative → skipped
+      sale({ date: '2026-02-01' }), // unpaid → skipped
+    ]
+    const points = collectionByMonth(rows)
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ key: '2026-01', avgDays: 35, invoices: 2, breach: true })
+  })
+
+  it('computes on-time percentage against due dates', () => {
+    const rows = [
+      sale({ date_paid: '2026-01-10', due_date: '2026-01-15' }),
+      sale({ date_paid: '2026-01-20', due_date: '2026-01-15' }),
+      sale({ date_paid: '2026-01-20' }), // no due date → excluded
+    ]
+    expect(onTimeCollection(rows)).toEqual({ percent: 50, onTime: 1, total: 2 })
+  })
+})
+
+describe('repeatClientShare / topShares', () => {
+  const rows = [
+    sale({ company: 'Acme', total_nam_amount: 100, category: 'PPE' }),
+    sale({ company: 'Acme', total_nam_amount: 100, category: 'PPE' }),
+    sale({ company: 'Solo', total_nam_amount: 50, category: 'MATERIALS' }),
+  ]
+
+  it('attributes revenue from clients with more than one order', () => {
+    const share = repeatClientShare(rows)
+    expect(share.percent).toBeCloseTo(80)
+    expect(share).toMatchObject({ repeatRevenue: 200, totalRevenue: 250, repeatClients: 1 })
+  })
+
+  it('finds the biggest company, category and manager with their share', () => {
+    const lookup = new Map([['acme', 'Anne']])
+    const shares = topShares(rows, lookup)
+    expect(shares[0]).toMatchObject({ kind: 'Company', name: 'Acme', total: 200 })
+    expect(shares[0].percent).toBeCloseTo(80)
+    expect(shares[1]).toMatchObject({ kind: 'Category', name: 'PPE' })
+    expect(shares[2]).toMatchObject({ kind: 'Manager', name: 'Anne' })
+  })
+})
+
+describe('order size vs margin', () => {
+  it('bins orders by value and averages margin, dropping empty bins', () => {
+    const rows = [
+      sale({ total_nam_amount: 5_000, income_percent: 30 }),
+      sale({ total_nam_amount: 8_000, income_percent: 20 }),
+      sale({ total_nam_amount: 300_000, income_percent: 10 }),
+    ]
+    const bins = marginByOrderSize(rows)
+    expect(bins).toEqual([
+      { label: '<₱10k', avgMargin: 25, orders: 2 },
+      { label: '≥₱250k', avgMargin: 10, orders: 1 },
+    ])
+  })
+
+  it('returns a negative r when margin falls as value rises, null when degenerate', () => {
+    const rows = [
+      sale({ total_nam_amount: 1_000, income_percent: 30 }),
+      sale({ total_nam_amount: 10_000, income_percent: 20 }),
+      sale({ total_nam_amount: 100_000, income_percent: 10 }),
+    ]
+    expect(orderValueMarginR(rows)).toBeLessThan(0)
+    expect(orderValueMarginR(rows.slice(0, 2))).toBeNull()
+  })
+})
+
+describe('weeklyTrend', () => {
+  it('marks direction vs previous week and fills MA4 from the 4th week', () => {
+    const rows = [
+      sale({ date: '2026-01-05', total_nam_amount: 100 }),
+      sale({ date: '2026-01-12', total_nam_amount: 200 }),
+      sale({ date: '2026-01-19', total_nam_amount: 100 }),
+      sale({ date: '2026-01-26', total_nam_amount: 200 }),
+    ]
+    const weeks = weeklyTrend(rows)
+    expect(weeks.map((w) => w.dir)).toEqual(['first', 'up', 'down', 'up'])
+    expect(weeks[2].ma4).toBeNull()
+    expect(weeks[3].ma4).toBe(150)
+  })
+})

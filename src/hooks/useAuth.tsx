@@ -32,6 +32,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 /** Selectable "home page after login" options, each gated like its route. */
 export const HOME_ROUTE_OPTIONS: Array<{ path: string; label: string; perms: PermissionName[] }> = [
   { path: '/', label: 'Dashboard', perms: ['view_dashboard'] },
+  { path: '/analytics', label: 'Analytics', perms: ['view_dashboard'] },
   { path: '/records', label: 'Records', perms: ['manage_sales', 'view_dashboard'] },
   { path: '/sales/new', label: 'Sales Entry', perms: ['manage_sales'] },
   { path: '/quotations', label: 'Quotations', perms: ['manage_sales'] },
