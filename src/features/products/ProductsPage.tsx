@@ -87,30 +87,37 @@ export function ProductsPage() {
     [products],
   )
 
-  const filtered = useMemo(
-    () =>
-      (products ?? []).filter(
-        (p) =>
-          (!category || p.category_code === category) &&
-          (view !== 'low' || (p.current_stock ?? 0) <= (p.reorder_level ?? 10)) &&
-          (view !== 'out' || (p.current_stock ?? 0) === 0) &&
-          (view !== 'draft' || !!p.is_draft),
-      ),
-    [products, category, view],
-  )
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (products ?? []).filter(
+      (p) =>
+        (!category || p.category_code === category) &&
+        (view !== 'low' || (p.current_stock ?? 0) <= (p.reorder_level ?? 10)) &&
+        (view !== 'out' || (p.current_stock ?? 0) === 0) &&
+        (view !== 'draft' || !!p.is_draft) &&
+        (!q ||
+          [p.name, p.category_code, p.unit, p.supplier, p.margin].some((f) =>
+            (f ?? '').toLowerCase().includes(q),
+          )),
+    )
+  }, [products, category, view, search])
 
+  // Stats reflect the current view (search + filters), not the whole catalog.
   const stats = useMemo(() => {
-    const list = products ?? []
     let drafts = 0
     let out = 0
     let uncat = 0
-    for (const p of list) {
+    let totalSupplier = 0
+    let totalNam = 0
+    for (const p of filtered) {
       if (p.is_draft) drafts += 1
       if ((p.current_stock ?? 0) === 0) out += 1
       if (!p.category_code || p.category_code === 'Uncategorized') uncat += 1
+      totalSupplier += p.supplier_price ?? 0
+      totalNam += p.nam_price ?? 0
     }
-    return { total: list.length, drafts, out, uncat }
-  }, [products])
+    return { total: filtered.length, drafts, out, uncat, totalSupplier, totalNam }
+  }, [filtered])
 
   const selectedProducts = useMemo(
     () => (products ?? []).filter((p) => rowSelection[String(p.id)]),
@@ -219,12 +226,14 @@ export function ProductsPage() {
         }
       />
 
-      {!isLoading && stats.total > 0 && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard tone="accent" icon="inventory_2" label="Products in catalog" value={stats.total.toLocaleString()} />
+      {!isLoading && (products ?? []).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <StatCard tone="accent" icon="inventory_2" label="Products shown" value={stats.total.toLocaleString()} />
           <StatCard tone="warning" icon="edit_note" label="Draft products" value={stats.drafts.toLocaleString()} />
           <StatCard tone="critical" icon="warning" label="Out of stock" value={stats.out.toLocaleString()} />
           <StatCard tone="serious" icon="sell" label="Uncategorized" value={stats.uncat.toLocaleString()} />
+          <StatCard tone="neutral" icon="shopping_cart" label="Total supplier price" value={formatPeso(stats.totalSupplier)} />
+          <StatCard tone="good" icon="payments" label="Total NAM price" value={formatPeso(stats.totalNam)} />
         </div>
       )}
 
@@ -269,8 +278,6 @@ export function ProductsPage() {
         <DataTable
           data={filtered}
           columns={columns}
-          globalFilter={search}
-          onGlobalFilterChange={setSearch}
           pageSize={50}
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
