@@ -118,11 +118,19 @@ export function matchesPayment(sale: SaleRow, filter: PaymentFilter): boolean {
   return true
 }
 
-/** Text search across item, PO, S/N, remarks, TIN, and company. */
+/** Text search across item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier. */
 export function matchesRecordSearch(sale: SaleRow, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  return [sale.item, sale.po_number, sale.sn, sale.remarks, sale.tin, sale.company].some(
-    (field) => (field ?? '').toLowerCase().includes(q),
-  )
+  return [
+    sale.item,
+    sale.po_number,
+    sale.sn,
+    sale.si_number,
+    sale.remarks,
+    sale.tin,
+    sale.company,
+    sale.buyer,
+    sale.supplier,
+  ].some((field) => (field ?? '').toLowerCase().includes(q))
 }

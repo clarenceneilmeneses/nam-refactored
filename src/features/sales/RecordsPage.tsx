@@ -371,7 +371,7 @@ export function RecordsPage() {
           <Search className="pointer-events-none absolute top-2.5 left-2.5 h-4 w-4 text-ink-muted" />
           <Input
             className="w-64 pl-8"
-            placeholder="Search item, PO, S/N, remarks, TIN…"
+            placeholder="Search item, PO, S/N, SI #, buyer, supplier…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

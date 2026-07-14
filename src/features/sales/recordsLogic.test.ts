@@ -135,16 +135,19 @@ describe('filters', () => {
     expect(matchesPayment(sale({ payment_status: 'Paid' }), 'Unpaid')).toBe(false)
   })
 
-  it('matchesRecordSearch scans item, PO, S/N, remarks, TIN, and company', () => {
+  it('matchesRecordSearch scans item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier', () => {
     const row = sale({
       item: 'Bond Paper',
       po_number: 'PO-123',
       sn: 'SN-77',
+      si_number: 'SI-9001',
       remarks: 'rush order',
       tin: '007-123-456',
       company: 'ACME Corp',
+      buyer: 'Jane Cruz',
+      supplier: 'Widget Co',
     })
-    for (const q of ['bond', 'po-123', 'sn-77', 'rush', '007-123', 'acme']) {
+    for (const q of ['bond', 'po-123', 'sn-77', 'si-9001', 'rush', '007-123', 'acme', 'jane', 'widget']) {
       expect(matchesRecordSearch(row, q)).toBe(true)
     }
     expect(matchesRecordSearch(row, 'nowhere')).toBe(false)
