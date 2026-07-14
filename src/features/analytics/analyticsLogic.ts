@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, format, getDay, parseISO } from 'date-fns'
 import { round2 } from '@/lib/calculations'
+import { formatPeso } from '@/lib/format'
 import type { SaleRow } from '@/types/database'
 import { categoryKey, companyKey, managerOf, type ManagerLookup } from '../dashboard/aggregate'
 import { bucketOf, type Drills } from '../dashboard/filters'
@@ -380,4 +381,168 @@ export function topShares(rows: SaleRow[], lookup: ManagerLookup): TopShare[] {
     topOf('Category', categoryKey),
     topOf('Manager', (r) => managerOf(lookup, r.company)),
   ].filter((s): s is TopShare => s !== null)
+}
+
+// ---------------------------------------------------------------- Key insights
+
+export type InsightTone = 'neutral' | 'good' | 'warning' | 'critical'
+
+export type Insight = {
+  /** Material Symbols (Rounded) ligature name. */
+  icon: string
+  tone: InsightTone
+  /** One plain-language takeaway. */
+  headline: string
+  /** The supporting numbers, spelled out in a full sentence. */
+  detail: string
+}
+
+export type InsightInput = {
+  monthly: MonthPoint[]
+  weekday: WeekdayPoint[]
+  seasonality: Seasonality | null
+  yoy: YoyComparison | null
+  avgCollectionDays: number | null
+  onTime: OnTimeCollection
+  repeat: RepeatShare
+  shares: TopShare[]
+  r: number | null
+}
+
+const DAY_FULL: Record<(typeof WEEKDAYS)[number], string> = {
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+  Sun: 'Sunday',
+}
+
+const monthName = (key: string) => format(parseISO(`${key}-01`), 'MMMM yyyy')
+
+/**
+ * Turns the computed aggregates into short plain-language findings for the
+ * Key Insights panel — one card per finding, tone carrying good/bad news.
+ * `today` matters because the running calendar month is incomplete: it is
+ * reported as "so far" and never judged as a drop.
+ */
+export function buildInsights(d: InsightInput, today: string = format(new Date(), 'yyyy-MM-dd')): Insight[] {
+  const insights: Insight[] = []
+
+  // Month-to-month growth, judged on complete months only.
+  const last = d.monthly[d.monthly.length - 1]
+  const partial = last && last.key === today.slice(0, 7) ? last : null
+  const complete = partial ? d.monthly.slice(0, -1) : d.monthly
+  if (complete.length >= 2) {
+    const [prev, latest] = complete.slice(-2)
+    const pct = prev.revenue > 0 ? ((latest.revenue - prev.revenue) / prev.revenue) * 100 : latest.revenue > 0 ? 100 : 0
+    const prevName = format(parseISO(`${prev.key}-01`), 'MMMM')
+    const soFar = partial ? ` ${format(parseISO(`${partial.key}-01`), 'MMMM')} has ${formatPeso(partial.revenue)} so far.` : ''
+    if (Math.abs(pct) < 2) {
+      insights.push({
+        icon: 'trending_flat',
+        tone: 'neutral',
+        headline: `${monthName(latest.key)} held level with ${prevName}`,
+        detail: `${formatPeso(latest.revenue)} vs ${formatPeso(prev.revenue)} the month before.${soFar}`,
+      })
+    } else {
+      const up = pct > 0
+      insights.push({
+        icon: up ? 'trending_up' : 'trending_down',
+        tone: up ? 'good' : 'critical',
+        headline: `Sales ${up ? 'grew' : 'fell'} ${Math.abs(pct).toFixed(0)}% in ${monthName(latest.key)}`,
+        detail: `${formatPeso(latest.revenue)}, ${up ? 'up' : 'down'} from ${formatPeso(prev.revenue)} in ${prevName}.${soFar}`,
+      })
+    }
+  }
+
+  // Pace against the previous year, over the months both years share.
+  if (d.yoy && d.seasonality) {
+    const overlap = d.seasonality.points.filter((p) => p.current !== null && p.previous !== null)
+    const span = overlap.length === 1 ? overlap[0].month : `${overlap[0].month}–${overlap[overlap.length - 1].month}`
+    const ahead = d.yoy.percent >= 0
+    insights.push({
+      icon: 'compare_arrows',
+      tone: ahead ? 'good' : 'critical',
+      headline: `${d.seasonality.currentYear} is running ${ahead ? 'ahead of' : 'behind'} ${d.seasonality.previousYear} by ${Math.abs(d.yoy.percent).toFixed(0)}%`,
+      detail: `${span} of ${d.seasonality.currentYear} brought ${formatPeso(d.yoy.currentTotal)}, against ${formatPeso(d.yoy.previousTotal)} in the same months of ${d.seasonality.previousYear}.`,
+    })
+  }
+
+  // Collection speed against the payment target.
+  if (d.avgCollectionDays !== null) {
+    const days = d.avgCollectionDays
+    const over = days - COLLECTION_TARGET_DAYS
+    const tone: InsightTone = over <= 0 ? 'good' : over <= COLLECTION_TARGET_DAYS / 2 ? 'warning' : 'critical'
+    const onTimeTxt = d.onTime.total > 0 ? ` ${d.onTime.percent.toFixed(0)}% of invoices with a due date were paid by it.` : ''
+    insights.push({
+      icon: 'schedule',
+      tone,
+      headline: tone === 'good' ? 'Clients pay within the target' : `Payments run ${Math.round(over)} days over target`,
+      detail: `A paid invoice takes ${days.toFixed(0)} days on average from sale to payment, against the ${COLLECTION_TARGET_DAYS}-day target.${onTimeTxt}`,
+    })
+  }
+
+  // Reliance on the single biggest client.
+  const top = d.shares.find((s) => s.kind === 'Company')
+  if (top && d.repeat.totalRevenue > 0) {
+    const heavy = top.percent >= 40
+    insights.push({
+      icon: 'pie_chart',
+      tone: heavy ? 'warning' : 'neutral',
+      headline: heavy ? `${top.name} alone brings ${top.percent.toFixed(0)}% of revenue` : 'Revenue is spread across clients',
+      detail: heavy
+        ? `Losing this one client would take away ${formatPeso(top.total)} — worth growing the next-biggest accounts.`
+        : `The biggest client, ${top.name}, accounts for ${top.percent.toFixed(0)}% of revenue (${formatPeso(top.total)}).`,
+    })
+    insights.push({
+      icon: 'group',
+      tone: d.repeat.percent >= 50 ? 'good' : 'neutral',
+      headline:
+        d.repeat.percent >= 50 ? 'Most revenue comes from returning clients' : 'Most revenue comes from one-time clients',
+      detail: `${d.repeat.repeatClients.toLocaleString()} clients ordered more than once; together they bring ${d.repeat.percent.toFixed(0)}% of revenue.`,
+    })
+  }
+
+  // Calendar rhythm: best month + busiest weekday.
+  const peakMonth = seriesPeak(d.monthly, (p) => p.revenue)
+  if (peakMonth) {
+    const peakDay = d.weekday.find((w) => w.peak)
+    const dayTxt = peakDay ? ` In a typical week, ${DAY_FULL[peakDay.day]} brings in the most revenue.` : ''
+    insights.push({
+      icon: 'calendar_month',
+      tone: 'neutral',
+      headline: `Best month: ${monthName(peakMonth.key)}`,
+      detail: `${formatPeso(peakMonth.revenue)} in revenue, the highest of this selection.${dayTxt}`,
+    })
+  }
+
+  // Whether pricing holds up on large orders.
+  if (d.r !== null) {
+    if (Math.abs(d.r) < 0.2) {
+      insights.push({
+        icon: 'sell',
+        tone: 'good',
+        headline: 'Margins are steady across order sizes',
+        detail: 'Small and large orders earn roughly the same margin percentage — pricing is applied consistently.',
+      })
+    } else if (d.r < 0) {
+      insights.push({
+        icon: 'sell',
+        tone: 'warning',
+        headline: 'Bigger orders earn thinner margins',
+        detail: 'The average margin percentage drops as order value rises — worth reviewing discounts on large orders.',
+      })
+    } else {
+      insights.push({
+        icon: 'sell',
+        tone: 'good',
+        headline: 'Bigger orders earn better margins',
+        detail: 'The average margin percentage rises with order value — large orders are priced well.',
+      })
+    }
+  }
+
+  return insights
 }

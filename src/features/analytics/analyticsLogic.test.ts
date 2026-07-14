@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SaleRow } from '@/types/database'
 import { NO_DRILLS } from '../dashboard/filters'
 import {
+  buildInsights,
   collectionByMonth,
   filterAnalyticsRows,
   marginByOrderSize,
@@ -214,6 +215,78 @@ describe('order size vs margin', () => {
     ]
     expect(orderValueMarginR(rows)).toBeLessThan(0)
     expect(orderValueMarginR(rows.slice(0, 2))).toBeNull()
+  })
+})
+
+describe('buildInsights', () => {
+  const month = (key: string, revenue: number, patch = {}) => ({
+    key,
+    label: key,
+    revenue,
+    profit: revenue * 0.2,
+    margin: 20,
+    orders: 10,
+    ...patch,
+  })
+  const empty = {
+    monthly: [],
+    weekday: [],
+    seasonality: null,
+    yoy: null,
+    avgCollectionDays: null,
+    onTime: { percent: 0, onTime: 0, total: 0 },
+    repeat: { percent: 0, repeatRevenue: 0, totalRevenue: 0, repeatClients: 0 },
+    shares: [],
+    r: null,
+  }
+
+  it('reports growth between the last two complete months in plain language', () => {
+    const insights = buildInsights({ ...empty, monthly: [month('2026-05', 100), month('2026-06', 150)] }, '2026-07-14')
+    expect(insights[0]).toMatchObject({ icon: 'trending_up', tone: 'good' })
+    expect(insights[0].headline).toContain('grew 50%')
+    expect(insights[0].headline).toContain('June 2026')
+  })
+
+  it('never judges the running month — it is reported as "so far"', () => {
+    const insights = buildInsights(
+      { ...empty, monthly: [month('2026-05', 100), month('2026-06', 150), month('2026-07', 20)] },
+      '2026-07-14',
+    )
+    expect(insights[0].headline).toContain('June 2026') // not a 87% crash for July
+    expect(insights[0].detail).toContain('so far')
+  })
+
+  it('calls small movements level, and drops the growth insight with one month', () => {
+    const level = buildInsights({ ...empty, monthly: [month('2026-05', 100), month('2026-06', 101)] }, '2026-07-14')
+    expect(level[0]).toMatchObject({ icon: 'trending_flat', tone: 'neutral' })
+    expect(buildInsights({ ...empty, monthly: [month('2026-06', 100)] }, '2026-07-14')).toHaveLength(1) // only best-month
+  })
+
+  it('grades collection speed against the 30-day target', () => {
+    const good = buildInsights({ ...empty, avgCollectionDays: 25 }, '2026-07-14')
+    expect(good[0]).toMatchObject({ tone: 'good', headline: 'Clients pay within the target' })
+    const warn = buildInsights({ ...empty, avgCollectionDays: 40 }, '2026-07-14')
+    expect(warn[0]).toMatchObject({ tone: 'warning', headline: 'Payments run 10 days over target' })
+    expect(buildInsights({ ...empty, avgCollectionDays: 70 }, '2026-07-14')[0].tone).toBe('critical')
+  })
+
+  it('warns when one client dominates revenue', () => {
+    const base = {
+      ...empty,
+      repeat: { percent: 80, repeatRevenue: 800, totalRevenue: 1000, repeatClients: 4 },
+      shares: [{ kind: 'Company' as const, name: 'Acme', percent: 45, total: 450 }],
+    }
+    const [concentration, repeat] = buildInsights(base, '2026-07-14')
+    expect(concentration).toMatchObject({ tone: 'warning' })
+    expect(concentration.headline).toContain('Acme')
+    expect(repeat).toMatchObject({ tone: 'good', headline: 'Most revenue comes from returning clients' })
+  })
+
+  it('translates the order-size correlation without exposing r', () => {
+    expect(buildInsights({ ...empty, r: -0.6 }, '2026-07-14')[0].headline).toBe('Bigger orders earn thinner margins')
+    expect(buildInsights({ ...empty, r: 0.05 }, '2026-07-14')[0].headline).toBe('Margins are steady across order sizes')
+    const all = buildInsights({ ...empty, r: -0.6 }, '2026-07-14')
+    expect(all.every((i) => !i.detail.includes('r ='))).toBe(true)
   })
 })
 

@@ -1,9 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { format, parseISO } from 'date-fns'
 import { useSales, SALES_KEY } from '@/hooks/useSales'
 import { useCompanyAssignments } from '@/hooks/useCompanyAssignments'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -14,6 +13,7 @@ import { NO_DRILLS, type DrillKey, type Drills } from '../dashboard/filters'
 import { DrillChips } from '../dashboard/FilterBar'
 import { UNASSIGNED } from '../dashboard/palette'
 import {
+  buildInsights,
   COLLECTION_TARGET_DAYS,
   collectionByMonth,
   filterAnalyticsRows,
@@ -31,6 +31,8 @@ import {
   weeklyTrend,
   yearsPresent,
   yoyComparison,
+  type Insight,
+  type InsightTone,
   type Mom,
   type YearFilter,
 } from './analyticsLogic'
@@ -77,7 +79,7 @@ export function AnalyticsPage() {
     const seasonality = seasonalityYoY(historyRows)
     const collection = collectionByMonth(yearRows)
     const paidInvoices = collection.reduce((s, p) => s + p.invoices, 0)
-    return {
+    const computed = {
       yearRows,
       monthly,
       momRevenue: momOf(monthly, (p) => p.revenue),
@@ -95,6 +97,7 @@ export function AnalyticsPage() {
       weekly: weeklyTrend(historyRows),
       shares: topShares(yearRows, lookup),
     }
+    return { ...computed, insights: buildInsights(computed) }
   }, [rows, lookup, year, drills])
 
   const isLoading = sales.isLoading || assignments.isLoading
@@ -230,7 +233,7 @@ export function AnalyticsPage() {
           className="col-span-12 md:col-span-4"
           title="Profit Margin by Month"
           subtitle={`Avg ${seriesAvg(d.monthly, (p) => p.margin).toFixed(1)}% · ${formatPeso(totalProfit)} total profit`}
-          badge={<MomBadge mom={d.momMargin} text={(m) => `${m.amount >= 0 ? '+' : '−'}${Math.abs(m.amount).toFixed(1)} pp`} />}
+          badge={<MomBadge mom={d.momMargin} text={(m) => `${m.amount >= 0 ? '+' : '−'}${Math.abs(m.amount).toFixed(1)} pts`} />}
           loading={isLoading}
           isEmpty={noData}
         >
@@ -251,10 +254,11 @@ export function AnalyticsPage() {
             d.seasonality ? `${d.seasonality.currentYear} vs ${d.seasonality.previousYear}, revenue per calendar month` : undefined
           }
           badge={
-            d.yoy && (
+            d.yoy &&
+            d.seasonality && (
               <DeltaBadge
                 positive={d.yoy.percent >= 0}
-                text={`${d.yoy.percent >= 0 ? '+' : '−'}${Math.abs(d.yoy.percent).toFixed(1)}% YoY`}
+                text={`${d.yoy.percent >= 0 ? '+' : '−'}${Math.abs(d.yoy.percent).toFixed(1)}% vs ${d.seasonality.previousYear}`}
               />
             )
           }
@@ -293,7 +297,6 @@ export function AnalyticsPage() {
           className="col-span-12 xl:col-span-6"
           title="Order Size vs Margin"
           subtitle={d.r !== null ? describeR(d.r) : 'Average margin per order-value bracket'}
-          badge={d.r !== null && <span className="text-xs font-semibold tabular-nums text-ink-secondary">r = {d.r.toFixed(2)}</span>}
           loading={isLoading}
           isEmpty={d.bins.length === 0}
         >
@@ -313,7 +316,7 @@ export function AnalyticsPage() {
 
         <AnalyticsCard
           className="col-span-12 xl:col-span-4"
-          title="Discipline & Concentration"
+          title="Collections & Client Mix"
           loading={isLoading}
           isEmpty={noData}
         >
@@ -338,10 +341,21 @@ export function AnalyticsPage() {
           </div>
         </AnalyticsCard>
 
-        {/* Narrative summary */}
+        {/* Plain-language findings */}
         <Card className="col-span-12">
           <CardHeader>
             <CardTitle>Key Insights</CardTitle>
+            <CardDescription>
+              What the charts above are saying, in plain language
+              {!isLoading && !noData && (
+                <>
+                  {' '}
+                  — this selection covers {totalOrders.toLocaleString()} orders, {formatPeso(totalRevenue)} in revenue and{' '}
+                  {formatPeso(totalProfit)} profit
+                  {totalRevenue > 0 && <> ({((totalProfit / totalRevenue) * 100).toFixed(1)}% margin)</>}.
+                </>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -349,63 +363,10 @@ export function AnalyticsPage() {
             ) : noData ? (
               <EmptyState title="No data for this selection" />
             ) : (
-              <div className="max-w-4xl space-y-2 text-sm leading-relaxed text-ink-secondary">
-                <p>
-                  The selection covers <Strong>{totalOrders.toLocaleString()}</Strong> orders totalling{' '}
-                  <Strong>{formatPeso(totalRevenue)}</Strong> in revenue and <Strong>{formatPeso(totalProfit)}</Strong> profit
-                  {totalRevenue > 0 && (
-                    <>
-                      {' '}
-                      (<Strong>{((totalProfit / totalRevenue) * 100).toFixed(1)}%</Strong> margin)
-                    </>
-                  )}
-                  .
-                  {peakMonth && (
-                    <>
-                      {' '}
-                      Revenue peaked in <Strong>{format(parseISO(`${peakMonth.key}-01`), 'MMMM yyyy')}</Strong> (
-                      <Strong>{formatPeso(peakMonth.revenue)}</Strong>)
-                    </>
-                  )}
-                  {peakDay && (
-                    <>
-                      , and <Strong>{peakDay.day}</Strong> is the strongest day of the week
-                    </>
-                  )}
-                  .
-                </p>
-                {d.yoy && d.seasonality && (
-                  <p>
-                    <Strong>{d.seasonality.currentYear}</Strong> is running{' '}
-                    <Strong>
-                      {d.yoy.percent >= 0 ? '+' : '−'}
-                      {Math.abs(d.yoy.percent).toFixed(1)}%
-                    </Strong>{' '}
-                    versus {d.seasonality.previousYear} across the months both years share (
-                    <Strong>{formatPeso(d.yoy.currentTotal)}</Strong> vs {formatPeso(d.yoy.previousTotal)}).
-                  </p>
-                )}
-                {d.avgCollectionDays !== null && (
-                  <p>
-                    Paid invoices take an average of <Strong>{d.avgCollectionDays.toFixed(1)} days</Strong> to collect against
-                    the {COLLECTION_TARGET_DAYS}-day target
-                    {d.onTime.total > 0 && (
-                      <>
-                        , and <Strong>{d.onTime.percent.toFixed(1)}%</Strong> of invoices with a due date were settled on time
-                      </>
-                    )}
-                    .
-                  </p>
-                )}
-                <p>
-                  {d.shares[0] && (
-                    <>
-                      Top client <Strong>{d.shares[0].name}</Strong> drives <Strong>{d.shares[0].percent.toFixed(1)}%</Strong> of
-                      revenue, while repeat clients account for <Strong>{d.repeat.percent.toFixed(1)}%</Strong> overall.
-                    </>
-                  )}
-                  {d.r !== null && <> {describeR(d.r)} (r = {d.r.toFixed(2)}).</>}
-                </p>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {d.insights.map((insight) => (
+                  <InsightTile key={insight.headline} insight={insight} />
+                ))}
               </div>
             )}
           </CardContent>
@@ -415,8 +376,29 @@ export function AnalyticsPage() {
   )
 }
 
-function Strong({ children }: { children: ReactNode }) {
-  return <strong className="font-semibold text-ink">{children}</strong>
+/** Icon circle wears the tone; text stays in ink tokens (status is never color-alone). */
+const INSIGHT_TONE: Record<InsightTone, string> = {
+  neutral: 'bg-ink/8 text-ink-secondary',
+  good: 'bg-good/15 text-good-text',
+  warning: 'bg-warning/15 text-warning-text',
+  critical: 'bg-critical/15 text-critical-text',
+}
+
+function InsightTile({ insight }: { insight: Insight }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-hairline p-3.5">
+      <span
+        className={`material-symbols-rounded flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[20px] ${INSIGHT_TONE[insight.tone]}`}
+        aria-hidden
+      >
+        {insight.icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-ink">{insight.headline}</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-secondary">{insight.detail}</p>
+      </div>
+    </div>
+  )
 }
 
 function describeR(r: number): string {
@@ -436,7 +418,7 @@ function FilterField({ label, children }: { label: string; children: ReactNode }
 
 function MomBadge({ mom, text }: { mom: Mom | null; text: (m: Mom) => string }) {
   if (!mom) return null
-  return <DeltaBadge positive={mom.amount >= 0} text={`MoM ${text(mom)}`} />
+  return <DeltaBadge positive={mom.amount >= 0} text={`${text(mom)} vs prior month`} />
 }
 
 function DeltaBadge({ positive, text }: { positive: boolean; text: string }) {

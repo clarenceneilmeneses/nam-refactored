@@ -2,8 +2,9 @@
 // Data tables only — users/roles/permissions/role_permissions are kept as-is.
 const fs = require('fs')
 
-const DUMP = 'D:/Users/Huawei/Downloads/u476854436_nam (3).sql'
-const OUT = 'D:/Users/Huawei/Downloads/nam_data_postgres.sql'
+// Usage: node scripts/convert-mysql-dump.cjs [path-to-phpmyadmin-dump.sql] [out.sql]
+const DUMP = process.argv[2] || 'D:/Users/Huawei/Downloads/u476854436_nam (3).sql'
+const OUT = process.argv[3] || 'D:/Users/Huawei/Downloads/nam_data_postgres.sql'
 
 const TABLES = ['products', 'clients', 'company_assignments', 'quotations', 'sales', 'system_logs']
 const BOOL_COLS = new Set(['is_draft', 'is_reserved'])
@@ -96,6 +97,58 @@ while ((m = re.exec(text)) !== null) {
 const q = (s) => `'${s.replace(/'/g, "''")}'`
 const isZeroDate = (s) => /^0000-00-00/.test(s)
 
+// --- Repair legacy typo dates that would violate the 10_sane_dates.sql CHECK constraints. ---
+// Mistyped year (0206-03-30): borrow the year from the row's sane sale date (or created_at).
+// Bad due_date (1900-01-29 Excel garbage): recompute date_delivered + payment_term days.
+// Anything else out of range: NULL (CHECKs pass NULLs).
+const saneDate = (s) => s.slice(0, 10) >= '2000-01-01' && s.slice(0, 10) < '2100-01-01'
+const termDays = (t) => {
+  const m = String(t ?? '').match(/\d+/)
+  if (m) return parseInt(m[0], 10)
+  return /cod|cash/i.test(String(t ?? '')) ? 0 : 30
+}
+const addDays = (iso, days) => {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+const dateFixes = []
+for (const table of TABLES) {
+  const { cols, rows } = data[table]
+  if (!cols) continue
+  const dateIdx = cols.map((c, i) => (DATE_COLS.has(c) || TS_COLS.has(c) ? i : -1)).filter((i) => i >= 0)
+  if (dateIdx.length === 0) continue
+  const iDate = cols.indexOf('date')
+  const iDeliv = cols.indexOf('date_delivered')
+  const iTerm = cols.indexOf('payment_term')
+  const iCreated = cols.indexOf('created_at')
+  const iId = cols.indexOf('id')
+  for (const r of rows) {
+    const refYear = (skip) => {
+      for (const i of [iDate, iCreated]) {
+        if (i >= 0 && i !== skip && r[i].t === 's' && !isZeroDate(r[i].v) && saneDate(r[i].v)) return r[i].v.slice(0, 4)
+      }
+      return null
+    }
+    for (const ci of dateIdx) {
+      const v = r[ci]
+      if (v.t !== 's' || isZeroDate(v.v) || saneDate(v.v)) continue
+      const col = cols[ci]
+      let fixed = null
+      if (parseInt(v.v.slice(0, 4), 10) < 1000) {
+        const y = refYear(ci)
+        if (y) fixed = y + v.v.slice(4)
+      }
+      if (!fixed && col === 'due_date' && iDeliv >= 0 && r[iDeliv].t === 's' && !isZeroDate(r[iDeliv].v) && saneDate(r[iDeliv].v)) {
+        fixed = addDays(r[iDeliv].v, termDays(iTerm >= 0 && r[iTerm].t === 's' ? r[iTerm].v : null))
+      }
+      dateFixes.push(`${table} id=${iId >= 0 ? r[iId].v : '?'} ${col}: ${v.v} -> ${fixed || 'NULL'}`)
+      if (fixed && saneDate(fixed)) v.v = fixed
+      else r[ci] = { t: 'null' }
+    }
+  }
+}
+
 function emitValue(col, val) {
   if (val.t === 'null') return 'NULL'
   if (BOOL_COLS.has(col)) return val.v === '0' || val.v === 0 ? 'FALSE' : 'TRUE'
@@ -106,7 +159,7 @@ function emitValue(col, val) {
 }
 
 const out = []
-out.push('-- Legacy MySQL -> Postgres data load (generated from u476854436_nam (3).sql)')
+out.push(`-- Legacy MySQL -> Postgres data load (generated from ${DUMP.split('/').pop()})`)
 out.push('-- Data tables only; users/roles/permissions are untouched.')
 out.push('BEGIN;')
 out.push(`TRUNCATE TABLE ${TABLES.join(', ')};`)
@@ -148,13 +201,13 @@ for (const st of statements) {
 }
 if (cur.length) parts.push(cur)
 const partFiles = parts.map((p, i) => {
-  const file = `D:/Users/Huawei/Downloads/nam_data_postgres_part${i + 1}_of_${parts.length}.sql`
+  const file = OUT.replace(/\.sql$/, `_part${i + 1}_of_${parts.length}.sql`)
   fs.writeFileSync(file, `-- Part ${i + 1}/${parts.length} — run parts strictly in order.\nBEGIN;\n${p.join('\n')}\nCOMMIT;`, 'utf8')
   return file
 })
 
 // Report + sanity check: July 2026 revenue should match the old system.
-const report = { outFile: OUT, outSizeKB: Math.round(fs.statSync(OUT).size / 1024), partFiles }
+const report = { outFile: OUT, outSizeKB: Math.round(fs.statSync(OUT).size / 1024), partFiles, dateFixes }
 for (const t of TABLES) report[t] = data[t].rows.length
 const s = data.sales
 if (s.cols) {
