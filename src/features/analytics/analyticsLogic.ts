@@ -111,30 +111,62 @@ export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as con
 
 export type WeekdayPoint = {
   day: (typeof WEEKDAYS)[number]
+  /** What one such weekday typically brings: total ÷ occurrences. */
+  avg: number
+  /** Combined total across every such weekday in the selection. */
   revenue: number
+  /** How many of this weekday the selection's date span contains. */
+  occurrences: number
   orders: number
   belowAvg: boolean
   peak: boolean
 }
 
-/** Revenue by day of week (Mon-first), flagging the peak and below-average days. */
+/**
+ * Typical revenue per weekday (Mon-first), flagging the peak and below-average
+ * days. Sums alone mislead — 70 Mondays of history read as one huge Monday —
+ * so each day's total is divided by how many of that weekday the data's date
+ * span contains (including zero-sale ones).
+ */
 export function weekdayPattern(rows: SaleRow[]): WeekdayPoint[] {
   const totals = WEEKDAYS.map(() => ({ revenue: 0, orders: 0 }))
+  let min: string | null = null
+  let max: string | null = null
   for (const r of rows) {
     if (!r.date) continue
     const index = (getDay(parseISO(r.date)) + 6) % 7 // JS Sunday=0 → Mon-first
     totals[index].revenue += r.total_nam_amount ?? 0
     totals[index].orders += 1
+    if (min === null || r.date < min) min = r.date
+    if (max === null || r.date > max) max = r.date
   }
-  const avg = totals.reduce((s, t) => s + t.revenue, 0) / 7
-  const max = Math.max(...totals.map((t) => t.revenue))
+  // Occurrences of each weekday within [min, max]: full weeks + the remainder days.
+  const occurrences = WEEKDAYS.map(() => 0)
+  if (min !== null && max !== null) {
+    const spanDays = differenceInCalendarDays(parseISO(max), parseISO(min)) + 1
+    const first = (getDay(parseISO(min)) + 6) % 7
+    for (let i = 0; i < 7; i++) occurrences[i] = Math.floor(spanDays / 7)
+    for (let i = 0; i < spanDays % 7; i++) occurrences[(first + i) % 7] += 1
+  }
+  const avgs = totals.map((t, i) => (occurrences[i] > 0 ? t.revenue / occurrences[i] : 0))
+  const active = avgs.filter((_, i) => occurrences[i] > 0)
+  const mean = active.length > 0 ? active.reduce((s, a) => s + a, 0) / active.length : 0
+  const peakAvg = Math.max(...avgs)
   return WEEKDAYS.map((day, i) => ({
     day,
+    avg: round2(avgs[i]),
     revenue: round2(totals[i].revenue),
+    occurrences: occurrences[i],
     orders: totals[i].orders,
-    belowAvg: totals[i].revenue < avg,
-    peak: max > 0 && totals[i].revenue === max,
+    belowAvg: avgs[i] < mean,
+    peak: peakAvg > 0 && avgs[i] === peakAvg,
   }))
+}
+
+/** Mean of the per-weekday averages, over weekdays the span actually contains. */
+export function weekdayMean(points: WeekdayPoint[]): number {
+  const active = points.filter((p) => p.occurrences > 0)
+  return active.length > 0 ? active.reduce((s, p) => s + p.avg, 0) / active.length : 0
 }
 
 // ---------------------------------------------------------------- Seasonality (YoY)
@@ -509,7 +541,7 @@ export function buildInsights(d: InsightInput, today: string = format(new Date()
   const peakMonth = seriesPeak(d.monthly, (p) => p.revenue)
   if (peakMonth) {
     const peakDay = d.weekday.find((w) => w.peak)
-    const dayTxt = peakDay ? ` In a typical week, ${DAY_FULL[peakDay.day]} brings in the most revenue.` : ''
+    const dayTxt = peakDay ? ` In a typical week, ${DAY_FULL[peakDay.day]} brings in the most revenue (about ${formatPeso(peakDay.avg)} on average).` : ''
     insights.push({
       icon: 'calendar_month',
       tone: 'neutral',

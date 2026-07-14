@@ -83,24 +83,36 @@ export function TrendChart({
 
 // ---------------------------------------------------------------- Day-of-week pattern
 
+const DAY_PLURAL: Record<WeekdayPoint['day'], string> = {
+  Mon: 'Mondays',
+  Tue: 'Tuesdays',
+  Wed: 'Wednesdays',
+  Thu: 'Thursdays',
+  Fri: 'Fridays',
+  Sat: 'Saturdays',
+  Sun: 'Sundays',
+}
+
 function WeekdayTooltip(props: TooltipContentProps & { theme: ChartTheme }) {
   const { active, payload, theme } = props
   if (!active || !payload || payload.length === 0) return null
   const entry = payload[0].payload as WeekdayPoint
   return (
     <div style={theme.tooltip} className="px-3 py-2">
-      <p className="font-medium">{entry.day}</p>
-      <p className="tabular-nums">{formatPeso(entry.revenue)}</p>
-      <p style={{ color: theme.ink }}>{entry.orders.toLocaleString()} orders</p>
+      <p className="font-medium">A typical {entry.day}</p>
+      <p className="tabular-nums">{formatPeso(entry.avg)}</p>
+      <p style={{ color: theme.ink }}>
+        {formatPeso(entry.revenue)} · {entry.orders.toLocaleString()} orders across {entry.occurrences.toLocaleString()}{' '}
+        {DAY_PLURAL[entry.day]}
+      </p>
     </div>
   )
 }
 
-/** Pale bars are below the daily average; the peak day is full-strength with a label. */
-export function WeekdayChart({ data }: { data: WeekdayPoint[] }) {
+/** Bars are the per-weekday average (not the sum); pale bars run below the mean day; the peak day is full-strength. */
+export function WeekdayChart({ data, mean }: { data: WeekdayPoint[]; mean: number }) {
   const theme = useChartTheme()
   const axisTick = { fill: theme.ink, fontSize: 11 }
-  const avg = data.reduce((s, d) => s + d.revenue, 0) / 7
   return (
     <ResponsiveContainer width="100%" height={240}>
       <BarChart data={data} margin={{ top: 18, right: 8, bottom: 0, left: 4 }}>
@@ -108,18 +120,18 @@ export function WeekdayChart({ data }: { data: WeekdayPoint[] }) {
         <XAxis dataKey="day" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} />
         <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={pesoCompact} width={52} />
         <Tooltip content={(p) => <WeekdayTooltip {...p} theme={theme} />} cursor={{ fill: theme.cursorFill }} />
-        <Bar dataKey="revenue" radius={[4, 4, 0, 0]} maxBarSize={44}>
+        <Bar dataKey="avg" radius={[4, 4, 0, 0]} maxBarSize={44}>
           {data.map((d) => (
             <Cell key={d.day} fill={theme.primary} fillOpacity={d.belowAvg ? 0.4 : 1} />
           ))}
           <LabelList
-            dataKey="revenue"
+            dataKey="avg"
             position="top"
             formatter={(v) => pesoCompact(Number(v))}
             style={{ fill: theme.label, fontSize: 10 }}
           />
         </Bar>
-        <ReferenceLine y={avg} stroke={theme.ink} strokeWidth={1} strokeDasharray="5 4" />
+        <ReferenceLine y={mean} stroke={theme.ink} strokeWidth={1} strokeDasharray="5 4" />
       </BarChart>
     </ResponsiveContainer>
   )

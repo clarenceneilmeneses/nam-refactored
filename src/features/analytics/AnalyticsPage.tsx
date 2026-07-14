@@ -27,6 +27,7 @@ import {
   seriesAvg,
   seriesPeak,
   topShares,
+  weekdayMean,
   weekdayPattern,
   weeklyTrend,
   yearsPresent,
@@ -270,12 +271,16 @@ export function AnalyticsPage() {
 
         <AnalyticsCard
           className="col-span-12 xl:col-span-4"
-          title="Revenue by Day of Week"
-          subtitle={peakDay ? `Peak ${peakDay.day} · pale bars run below the daily average (dashed)` : undefined}
+          title="Revenue on a Typical Day"
+          subtitle={
+            peakDay
+              ? `Average per weekday — a typical ${peakDay.day} brings ${pesoCompact(peakDay.avg)}; pale bars run below the mean day (dashed)`
+              : undefined
+          }
           loading={isLoading}
           isEmpty={noData}
         >
-          <WeekdayChart data={d.weekday} />
+          <WeekdayChart data={d.weekday} mean={weekdayMean(d.weekday)} />
         </AnalyticsCard>
 
         {/* Collection discipline + pricing pattern */}

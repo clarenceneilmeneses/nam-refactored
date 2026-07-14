@@ -110,15 +110,27 @@ describe('monthlySeries / momOf', () => {
 
 describe('weekdayPattern', () => {
   it('buckets Mon-first and flags peak + below-average days', () => {
-    // 2026-01-05 is a Monday, 2026-01-10 a Saturday.
+    // 2026-01-05 is a Monday, 2026-01-10 a Saturday: a 6-day span, one of each Mon–Sat.
     const rows = [
       sale({ date: '2026-01-05', total_nam_amount: 700 }),
       sale({ date: '2026-01-10', total_nam_amount: 70 }),
     ]
     const pattern = weekdayPattern(rows)
-    expect(pattern[0]).toMatchObject({ day: 'Mon', revenue: 700, peak: true, belowAvg: false })
-    expect(pattern[5]).toMatchObject({ day: 'Sat', revenue: 70, peak: false, belowAvg: true })
-    expect(pattern[6]).toMatchObject({ day: 'Sun', revenue: 0, belowAvg: true })
+    expect(pattern[0]).toMatchObject({ day: 'Mon', revenue: 700, avg: 700, occurrences: 1, peak: true, belowAvg: false })
+    expect(pattern[5]).toMatchObject({ day: 'Sat', revenue: 70, avg: 70, occurrences: 1, peak: false, belowAvg: true })
+    expect(pattern[6]).toMatchObject({ day: 'Sun', revenue: 0, avg: 0, occurrences: 0, belowAvg: true })
+  })
+
+  it('averages each weekday over how many of them the date span contains', () => {
+    // Three consecutive Mondays: the span holds 3 Mondays and 2 of every other day.
+    const rows = [
+      sale({ date: '2026-01-05', total_nam_amount: 100 }),
+      sale({ date: '2026-01-12', total_nam_amount: 200 }),
+      sale({ date: '2026-01-19', total_nam_amount: 300 }),
+    ]
+    const pattern = weekdayPattern(rows)
+    expect(pattern[0]).toMatchObject({ day: 'Mon', revenue: 600, avg: 200, occurrences: 3 })
+    expect(pattern[1]).toMatchObject({ day: 'Tue', revenue: 0, avg: 0, occurrences: 2 })
   })
 })
 
