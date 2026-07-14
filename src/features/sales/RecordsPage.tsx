@@ -32,6 +32,7 @@ import {
 import { BulkDeliverDialog } from './BulkDeliverDialog'
 import { RecordEditDialog } from './RecordEditDialog'
 import { exportSalesCsv } from './exportCsv'
+import { canReviewSi } from '@/lib/privileges'
 
 const col = createColumnHelper<SaleRow>()
 
@@ -60,8 +61,9 @@ export function RecordsPage() {
   useRealtimeInvalidate('sales', SALES_KEY)
   const updateSale = useUpdateSale()
   const deleteSale = useDeleteSale()
-  const { hasPermission } = useAuth()
+  const { hasPermission, profile } = useAuth()
   const canManage = hasPermission('manage_sales')
+  const canReview = canReviewSi(profile)
 
   const [search, setSearch] = useState('')
   const [range, setRange] = useState<DateRange>({ preset: 'all', from: null, to: null })
@@ -141,8 +143,35 @@ export function RecordsPage() {
     })
   }
 
+  async function reviewSi(sale: SaleRow) {
+    try {
+      await updateSale.mutateAsync({
+        id: sale.id,
+        patch: {
+          si_reviewed: true,
+          si_reviewed_by: profile?.id ?? null,
+          si_reviewed_at: new Date().toISOString(),
+        },
+        log: {
+          action: 'Reviewed SI #',
+          description: `Reviewed SI # ${sale.si_number ?? ''} for record #${sale.id} (${sale.item ?? ''})`,
+        },
+      })
+      toast.success(`SI # for record #${sale.id} marked reviewed`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
   async function togglePayment(sale: SaleRow) {
     const nowPaid = sale.payment_status !== 'Paid'
+    // Payment is gated on Ms. Jessel Rose Genotiva's SI # review. Gate only on an
+    // explicit false so that, before 11_si_review.sql runs (column absent →
+    // undefined), payments aren't locked app-wide.
+    if (nowPaid && sale.si_reviewed === false) {
+      toast.error('This record’s SI # must be reviewed by Ms. Jessel Rose Genotiva before it can be marked Paid.')
+      return
+    }
     try {
       await updateSale.mutateAsync({
         id: sale.id,
@@ -277,7 +306,11 @@ export function RecordsPage() {
               <button
                 type="button"
                 className="cursor-pointer"
-                title={`Mark as ${row.original.payment_status === 'Paid' ? 'Pending' : 'Paid'}`}
+                title={
+                  row.original.payment_status !== 'Paid' && row.original.si_reviewed === false
+                    ? 'SI # must be reviewed by Ms. Jessel Rose Genotiva before this can be marked Paid'
+                    : `Mark as ${row.original.payment_status === 'Paid' ? 'Pending' : 'Paid'}`
+                }
                 onClick={() => togglePayment(row.original)}
               >
                 <PaymentStatusBadge status={row.original.payment_status} />
@@ -294,7 +327,38 @@ export function RecordsPage() {
           header: 'Due Tracker',
           cell: ({ row }) => <DueTrackerCell sale={row.original} today={today} />,
         }),
-        col.accessor('si_number', { header: 'SI #', cell: (c) => c.getValue() || '—' }),
+        col.accessor('si_number', {
+          header: 'SI #',
+          cell: ({ row }) => {
+            const s = row.original
+            if (!s.si_number) return '—'
+            return (
+              <span className="flex flex-col items-start gap-0.5 whitespace-nowrap">
+                <span>{s.si_number}</span>
+                {s.si_reviewed ? (
+                  <Badge
+                    variant="good"
+                    title={s.si_reviewed_at ? `Reviewed ${formatDate(s.si_reviewed_at)}` : 'Reviewed'}
+                  >
+                    <CheckCircle2 className="h-3 w-3" /> Reviewed
+                  </Badge>
+                ) : canReview ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    disabled={updateSale.isPending}
+                    onClick={() => reviewSi(s)}
+                  >
+                    Mark reviewed
+                  </Button>
+                ) : (
+                  <Badge variant="neutral">Pending review</Badge>
+                )}
+              </span>
+            )
+          },
+        }),
         col.accessor('buyer', {
           header: 'Buyer',
           cell: (c) => <span className="block max-w-32 truncate" title={c.getValue() ?? ''}>{c.getValue() || '—'}</span>,
@@ -335,7 +399,7 @@ export function RecordsPage() {
         }),
       ] as ColumnDef<SaleRow, unknown>[],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, statuses, canManage, today],
+    [selected, statuses, canManage, canReview, today, updateSale.isPending],
   )
 
   if (error) return <p className="text-sm text-critical">Couldn’t load records: {(error as Error).message}</p>

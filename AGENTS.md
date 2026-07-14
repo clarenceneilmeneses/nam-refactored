@@ -1,0 +1,28 @@
+This is a rewrite of a PHP sales dashboard (NAM Builders and Supply Corp) as a Vite + React 18 + TypeScript SPA on Supabase (Postgres). Tables: sales, quotations, products, clients, company_assignments, users, roles, permissions, role_permissions, system_logs. Real production data is loaded.
+
+Conventions that apply to every task:
+- Currency: Philippine Peso, formatted "₱1,234,567.89" (en-PH, always 2 decimals). Dates displayed as "MMM d, yyyy" unless a prompt says otherwise. Timezone: Asia/Manila.
+- All data access via typed TanStack Query hooks; no inline supabase.from() in components. No `any`.
+- Every create/update/delete mutation also inserts a row into system_logs: { user_id, action, description }. Action strings should match legacy style, e.g. "Created Quotation", "Partial Delivery", "Updated Payment Status".
+- Permission gating with <PermissionGate perm="...">: view_dashboard, manage_sales, manage_products, view_logistics, manage_users, manage_finance. Super Admin (role id 1) sees everything.
+- MySQL legacy used '0000-00-00' for empty dates; in Postgres these are NULL. "Delivered" means date_delivered IS NOT NULL.
+- Category list (fixed dropdown everywhere): OFFICE SUPPLIES, CLEANING MATERIALS, CONSUMABLES, OFFICE TOOLS AND EQUIPMENT, PPE, MATERIALS, COMPANY UNIFORM, OFFICE FURNITURE & FIXTURES, MEDICINE, OTHERS.
+- Core money math (lib/calculations.ts, unit-tested):
+  total_actual_amount = qty × suppliers_price
+  total_nam_amount    = qty × nam_unit_price
+  income              = total_nam_amount − total_actual_amount
+  income_percent      = income / total_nam_amount × 100 (0 when total_nam_amount = 0)
+  total_amount_due    = total_nam_amount − withholding_tax
+  markup% = (n−s)/s × 100 ; margin% = (n−s)/n × 100 (bidirectional solvers exist)
+Design language: Google-console style (Analytics / Cloud Console) — clean, content-first, fully themeable.
+- All colors come from the design tokens in src/index.css @theme (page #f8f9fa, white surface cards, Google grays #202124/#5f6368/#80868b, hairline #dadce0, semantic good/warning/serious/critical, accent defaults to Google Blue #1a73e8). A full dark theme overrides the same tokens via html[data-theme='dark'].
+- NEVER hardcode hex colors in components — use the token utility classes (bg-surface, text-ink / text-ink-secondary / text-ink-muted, border-hairline, text-accent-strong, bg-good/15 text-good-text, …). The accent tokens are overridden at runtime (preset or user-picked custom accent in useSettings), so hardcoded colors break theming.
+- User-tunable appearance, all device-local via useSettings/useTheme (localStorage): light/dark/system theme, accent presets + custom hue (deriveAccentVariants re-tones any hex for both themes), text size (root font-size — keep sizes rem-based), compact tables (html[data-density='compact'] tightens main-table padding via index.css), home page after login, 24-hour clock, sidebar start-collapsed.
+- Page skeleton: PageHeader (+ optional actions) → StatCard grid → Cards with content. Content-light pages (Settings, Users, Roles, Logistics, Import) are centered with mx-auto max-w-*; data-heavy pages run full width.
+- Cards: rounded-xl/2xl, hairline borders or soft shadows (shadow-e1/e2) — never both heavy. Icons: lucide, thin-stroke, small.
+- Data tables stay compact and dense; extra density comes from the user's compact-tables setting, never from restyling.
+- Charts (recharts): theme-aware palettes in features/dashboard/palette.ts — CHART_THEMES has validated light AND dark categorical slots (fixed order, never cycled; beyond 8 folds into `other`), plus chart chrome (grid/ink/tooltip/surface). Chart components read the active theme via useTheme, never hardcoded colors. Status colors (good/warning/critical) are reserved for status meaning (paid/pending/unpaid, targets), never used as "just another series". Manager colors are fixed per-person identity colors (managerColor) in both themes.
+- Motion: subtle only (150–200ms ease); no bouncy animations.
+- The printable formal quotation (FormalQuotePreview + #formal-quote-doc in index.css) is EXEMPT from all theming — it reproduces the legacy printed quote pixel-for-pixel (Arial, fixed colors, @page margin 0) and must not be restyled.
+
+Deployment: static SPA — the host must rewrite unknown paths to /index.html (public/.htaccess covers Apache/LiteSpeed e.g. Hostinger; public/_redirects covers Netlify; vercel.json covers Vercel). Deploy = `npm run build`, then upload the CONTENTS of dist/ (including the dotfile .htaccess).

@@ -23,6 +23,10 @@ export type SaleRow = {
   payment_status: string | null
   date_paid: string | null
   si_number: string | null
+  /** SI # review workflow (11_si_review.sql): only Jessel sets these; Paid is blocked until si_reviewed. */
+  si_reviewed: boolean | null
+  si_reviewed_by: number | null
+  si_reviewed_at: string | null
   buyer: string | null
   remarks: string | null
   supplier: string | null

@@ -146,6 +146,10 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
           due_date: draft.due_date || null,
           // SI # is Allyson-only; everyone else's save preserves the stored value.
           si_number: siEditable ? draft.si_number || null : (sale.si_number ?? null),
+          // Changing the SI # invalidates any prior review — Jessel must re-approve.
+          ...(siEditable && (draft.si_number || '') !== (sale.si_number ?? '')
+            ? { si_reviewed: false, si_reviewed_by: null, si_reviewed_at: null }
+            : {}),
           buyer: draft.buyer || null,
           sales_invoice_no: draft.sales_invoice_no || null,
           remarks: draft.remarks || null,
