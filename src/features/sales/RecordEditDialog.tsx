@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateSale } from '@/hooks/useSales'
+import { useAuth } from '@/hooks/useAuth'
+import { canEnterSi } from '@/lib/privileges'
 import { round2 } from '@/lib/calculations'
 import { CATEGORIES } from '@/lib/categories'
 import { formatPeso, formatPercent } from '@/lib/format'
@@ -79,6 +81,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onClose: () => void }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const updateSale = useUpdateSale()
+  const { profile } = useAuth()
+  // Only Ms. Allyson Ashley Aguilera may enter/change the SI #.
+  const siEditable = canEnterSi(profile)
 
   useEffect(() => {
     setDraft(sale ? toDraft(sale) : null)
@@ -139,7 +144,8 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
           date_delivered: draft.date_delivered || null,
           payment_term: draft.payment_term || null,
           due_date: draft.due_date || null,
-          si_number: draft.si_number || null,
+          // SI # is Allyson-only; everyone else's save preserves the stored value.
+          si_number: siEditable ? draft.si_number || null : (sale.si_number ?? null),
           buyer: draft.buyer || null,
           sales_invoice_no: draft.sales_invoice_no || null,
           remarks: draft.remarks || null,
@@ -251,7 +257,14 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
           </div>
           <div className="space-y-1">
             <Label>SI Number</Label>
-            <Input value={draft.si_number} onChange={(e) => set('si_number', e.target.value)} />
+            <Input
+              value={draft.si_number}
+              disabled={!siEditable}
+              onChange={(e) => set('si_number', e.target.value)}
+            />
+            {!siEditable && (
+              <p className="text-[11px] text-ink-muted">Only Ms. Allyson Ashley Aguilera can edit the SI #.</p>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Buyer</Label>
