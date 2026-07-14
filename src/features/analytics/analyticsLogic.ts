@@ -415,6 +415,242 @@ export function topShares(rows: SaleRow[], lookup: ManagerLookup): TopShare[] {
   ].filter((s): s is TopShare => s !== null)
 }
 
+// ---------------------------------------------------------------- Records & milestones
+
+export type RecordItem = {
+  /** Material Symbols (Rounded) ligature name. */
+  icon: string
+  label: string
+  value: string
+  detail: string
+}
+
+const fullDate = (iso: string) => format(parseISO(iso), 'MMM d, yyyy')
+
+/** Best-ever marks within the current selection — the numbers a team brags about. */
+export function buildRecords(rows: SaleRow[], monthly: MonthPoint[]): RecordItem[] {
+  const records: RecordItem[] = []
+
+  const bestMonth = seriesPeak(monthly, (p) => p.revenue)
+  if (bestMonth && bestMonth.revenue > 0) {
+    records.push({
+      icon: 'emoji_events',
+      label: 'Best month',
+      value: formatPeso(bestMonth.revenue),
+      detail: `${monthName(bestMonth.key)} · ${bestMonth.orders.toLocaleString()} orders`,
+    })
+  }
+
+  const bestProfit = seriesPeak(monthly, (p) => p.profit)
+  if (bestProfit && bestProfit.profit > 0) {
+    records.push({
+      icon: 'savings',
+      label: 'Most profitable month',
+      value: formatPeso(bestProfit.profit),
+      detail: `${monthName(bestProfit.key)} · ${bestProfit.margin.toFixed(1)}% margin`,
+    })
+  }
+
+  // Best single day by revenue.
+  const byDay = new Map<string, { revenue: number; orders: number }>()
+  for (const r of rows) {
+    if (!saneDate(r.date)) continue
+    const d = byDay.get(r.date) ?? { revenue: 0, orders: 0 }
+    d.revenue += r.total_nam_amount ?? 0
+    d.orders += 1
+    byDay.set(r.date, d)
+  }
+  let bestDay: { date: string; revenue: number; orders: number } | null = null
+  for (const [date, d] of byDay) {
+    if (!bestDay || d.revenue > bestDay.revenue) bestDay = { date, ...d }
+  }
+  if (bestDay && bestDay.revenue > 0) {
+    records.push({
+      icon: 'today',
+      label: 'Best single day',
+      value: formatPeso(round2(bestDay.revenue)),
+      detail: `${fullDate(bestDay.date)} · ${bestDay.orders.toLocaleString()} ${bestDay.orders === 1 ? 'order' : 'orders'}`,
+    })
+  }
+
+  // Biggest single order.
+  let biggest: SaleRow | null = null
+  for (const r of rows) {
+    if (!saneDate(r.date)) continue
+    if ((r.total_nam_amount ?? 0) > (biggest?.total_nam_amount ?? 0)) biggest = r
+  }
+  if (biggest && (biggest.total_nam_amount ?? 0) > 0) {
+    records.push({
+      icon: 'workspace_premium',
+      label: 'Biggest single order',
+      value: formatPeso(biggest.total_nam_amount ?? 0),
+      detail: `${companyKey(biggest)} · ${fullDate(biggest.date)}`,
+    })
+  }
+
+  const busiest = seriesPeak(monthly, (p) => p.orders)
+  if (busiest && busiest.orders > 0) {
+    records.push({
+      icon: 'shopping_cart',
+      label: 'Busiest month',
+      value: `${busiest.orders.toLocaleString()} orders`,
+      detail: `${monthName(busiest.key)} · ${formatPeso(busiest.revenue)}`,
+    })
+  }
+
+  // Longest run of consecutive month-over-month revenue growth.
+  let bestStart = -1
+  let bestLen = 0
+  let start = 0
+  for (let i = 1; i <= monthly.length; i++) {
+    const rising = i < monthly.length && monthly[i].revenue > monthly[i - 1].revenue
+    if (!rising) {
+      const len = i - start
+      if (len > bestLen) {
+        bestLen = len
+        bestStart = start
+      }
+      start = i
+    }
+  }
+  if (bestLen >= 3 && bestStart >= 0) {
+    const first = monthly[bestStart]
+    const last = monthly[bestStart + bestLen - 1]
+    records.push({
+      icon: 'local_fire_department',
+      label: 'Longest growth streak',
+      value: `${bestLen} months`,
+      detail: `Revenue climbed every month, ${monthName(first.key)} – ${monthName(last.key)}`,
+    })
+  }
+
+  return records
+}
+
+const MILESTONE_STEPS = [
+  1_000_000, 2_500_000, 5_000_000, 10_000_000, 25_000_000, 50_000_000, 100_000_000, 250_000_000, 500_000_000,
+  1_000_000_000,
+]
+
+export type MilestoneStatus = {
+  /** Cumulative revenue across the whole series. */
+  lifetime: number
+  /** Highest threshold crossed and the month it happened; null before the first million. */
+  reached: { threshold: number; monthKey: string } | null
+  /** The next threshold ahead; null past the last step. */
+  next: number | null
+  /** Percent of the way to `next` (0–100). */
+  progress: number
+}
+
+/** Walks cumulative revenue through the monthly series to find milestone crossings. */
+export function milestoneStatus(monthly: MonthPoint[]): MilestoneStatus {
+  let cumulative = 0
+  let reached: MilestoneStatus['reached'] = null
+  let stepIndex = 0
+  for (const p of monthly) {
+    cumulative += p.revenue
+    while (stepIndex < MILESTONE_STEPS.length && cumulative >= MILESTONE_STEPS[stepIndex]) {
+      reached = { threshold: MILESTONE_STEPS[stepIndex], monthKey: p.key }
+      stepIndex += 1
+    }
+  }
+  const next = stepIndex < MILESTONE_STEPS.length ? MILESTONE_STEPS[stepIndex] : null
+  return {
+    lifetime: round2(cumulative),
+    reached,
+    next,
+    progress: next !== null ? Math.min((cumulative / next) * 100, 100) : 100,
+  }
+}
+
+// ---------------------------------------------------------------- Receivables aging
+
+const AGING_EDGES: Array<{ label: string; min: number; max: number; tone: InsightTone }> = [
+  { label: '0–30 days', min: 0, max: 30, tone: 'neutral' },
+  { label: '31–60 days', min: 31, max: 60, tone: 'warning' },
+  { label: '61–90 days', min: 61, max: 90, tone: 'warning' },
+  { label: 'Over 90 days', min: 91, max: Infinity, tone: 'critical' },
+]
+
+export type AgingBucket = {
+  label: string
+  amount: number
+  invoices: number
+  /** Share of total unpaid revenue (0–100). */
+  share: number
+  tone: InsightTone
+}
+
+export type Debtor = { company: string; amount: number; invoices: number; oldestDays: number }
+
+export type ReceivablesAging = {
+  totalUnpaid: number
+  invoices: number
+  /** The slice of unpaid revenue already past its due date (rows with a due date only). */
+  overdue: { amount: number; invoices: number }
+  buckets: AgingBucket[]
+  /** Largest outstanding balances, biggest first. */
+  debtors: Debtor[]
+}
+
+/**
+ * Every unpaid invoice in the selection, aged from its sale date to today.
+ * Aging always runs against the real current date — an old year filter simply
+ * means those receivables have been outstanding that much longer.
+ */
+export function receivablesAging(
+  rows: SaleRow[],
+  today: string = format(new Date(), 'yyyy-MM-dd'),
+  topDebtors = 5,
+): ReceivablesAging {
+  const now = parseISO(today)
+  const buckets = AGING_EDGES.map(() => ({ amount: 0, invoices: 0 }))
+  const byCompany = new Map<string, Debtor>()
+  let totalUnpaid = 0
+  let invoices = 0
+  let overdueAmount = 0
+  let overdueInvoices = 0
+  for (const r of rows) {
+    if (r.payment_status === 'Paid' || !saneDate(r.date)) continue
+    const amount = r.total_nam_amount ?? 0
+    if (amount <= 0) continue
+    const age = Math.max(0, differenceInCalendarDays(now, parseISO(r.date)))
+    const i = AGING_EDGES.findIndex((b) => age >= b.min && age <= b.max)
+    if (i === -1) continue
+    buckets[i].amount += amount
+    buckets[i].invoices += 1
+    totalUnpaid += amount
+    invoices += 1
+    if (saneDate(r.due_date) && r.due_date < today) {
+      overdueAmount += amount
+      overdueInvoices += 1
+    }
+    const key = companyKey(r)
+    const debtor = byCompany.get(key) ?? { company: key, amount: 0, invoices: 0, oldestDays: 0 }
+    debtor.amount += amount
+    debtor.invoices += 1
+    debtor.oldestDays = Math.max(debtor.oldestDays, age)
+    byCompany.set(key, debtor)
+  }
+  return {
+    totalUnpaid: round2(totalUnpaid),
+    invoices,
+    overdue: { amount: round2(overdueAmount), invoices: overdueInvoices },
+    buckets: AGING_EDGES.map((edge, i) => ({
+      label: edge.label,
+      tone: edge.tone,
+      amount: round2(buckets[i].amount),
+      invoices: buckets[i].invoices,
+      share: totalUnpaid > 0 ? (buckets[i].amount / totalUnpaid) * 100 : 0,
+    })),
+    debtors: [...byCompany.values()]
+      .map((d) => ({ ...d, amount: round2(d.amount) }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, topDebtors),
+  }
+}
+
 // ---------------------------------------------------------------- Key insights
 
 export type InsightTone = 'neutral' | 'good' | 'warning' | 'critical'

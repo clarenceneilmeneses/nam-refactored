@@ -169,10 +169,16 @@ html[data-density='compact'] main table td {
   .fq-controls {
     display: none !important;
   }
-  #formal-quote-doc {
+  #formal-quote-doc,
+  #analytics-report-doc {
     box-shadow: none !important;
     padding: 10mm 12mm !important;
     margin: 0 !important;
+  }
+  /* The report doc's on-screen sections must not split mid-block on paper. */
+  #analytics-report-doc section,
+  #analytics-report-doc table {
+    break-inside: avoid;
   }
   /* Strip the on-screen editing affordances */
   .fq-editable {

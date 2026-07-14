@@ -3,13 +3,16 @@ import type { SaleRow } from '@/types/database'
 import { NO_DRILLS } from '../dashboard/filters'
 import {
   buildInsights,
+  buildRecords,
   collectionByMonth,
   filterAnalyticsRows,
   marginByOrderSize,
+  milestoneStatus,
   momOf,
   monthlySeries,
   onTimeCollection,
   orderValueMarginR,
+  receivablesAging,
   repeatClientShare,
   seasonalityYoY,
   topShares,
@@ -299,6 +302,82 @@ describe('buildInsights', () => {
     expect(buildInsights({ ...empty, r: 0.05 }, '2026-07-14')[0].headline).toBe('Margins are steady across order sizes')
     const all = buildInsights({ ...empty, r: -0.6 }, '2026-07-14')
     expect(all.every((i) => !i.detail.includes('r ='))).toBe(true)
+  })
+})
+
+describe('buildRecords', () => {
+  it('surfaces best month, best day, biggest order and a growth streak', () => {
+    const rows = [
+      sale({ date: '2026-01-05', company: 'Acme', total_nam_amount: 100, income: 20 }),
+      sale({ date: '2026-01-05', company: 'Acme', total_nam_amount: 900, income: 100 }), // Jan 5 day total 1000
+      sale({ date: '2026-02-10', company: 'Beta', total_nam_amount: 500, income: 50 }),
+      sale({ date: '2026-03-10', company: 'Beta', total_nam_amount: 1500, income: 200 }), // biggest month, day and order
+    ]
+    const records = buildRecords(rows, monthlySeries(rows))
+    const byLabel = Object.fromEntries(records.map((r) => [r.label, r]))
+    expect(byLabel['Best month'].value).toBe('₱1,500.00') // March
+    expect(byLabel['Best single day'].value).toBe('₱1,500.00') // Mar 10 beats Jan 5's ₱1,000
+    expect(byLabel['Biggest single order'].value).toBe('₱1,500.00')
+    expect(byLabel['Biggest single order'].detail).toContain('Beta')
+    // Jan 1000 → Feb 500 → Mar 1500 never rises 3 straight months, so no streak record.
+    expect(byLabel['Longest growth streak']).toBeUndefined()
+  })
+
+  it('reports a growth streak of 3+ consecutive rising months', () => {
+    const rows = [
+      sale({ date: '2026-01-10', total_nam_amount: 100 }),
+      sale({ date: '2026-02-10', total_nam_amount: 200 }),
+      sale({ date: '2026-03-10', total_nam_amount: 300 }),
+      sale({ date: '2026-04-10', total_nam_amount: 400 }),
+    ]
+    const streak = buildRecords(rows, monthlySeries(rows)).find((r) => r.label === 'Longest growth streak')
+    expect(streak?.value).toBe('4 months')
+  })
+})
+
+describe('milestoneStatus', () => {
+  it('tracks cumulative revenue past thresholds and toward the next', () => {
+    const monthly = monthlySeries([
+      sale({ date: '2026-01-10', total_nam_amount: 600_000 }),
+      sale({ date: '2026-02-10', total_nam_amount: 700_000 }), // cumulative 1.3M crosses ₱1M in Feb
+    ])
+    const status = milestoneStatus(monthly)
+    expect(status.lifetime).toBe(1_300_000)
+    expect(status.reached).toEqual({ threshold: 1_000_000, monthKey: '2026-02' })
+    expect(status.next).toBe(2_500_000)
+    expect(status.progress).toBeCloseTo((1_300_000 / 2_500_000) * 100)
+  })
+
+  it('has no reached milestone below the first million', () => {
+    const status = milestoneStatus(monthlySeries([sale({ date: '2026-01-10', total_nam_amount: 400_000 })]))
+    expect(status.reached).toBeNull()
+    expect(status.next).toBe(1_000_000)
+  })
+})
+
+describe('receivablesAging', () => {
+  it('buckets unpaid invoices by age and ranks the largest debtors', () => {
+    const rows = [
+      sale({ date: '2026-07-10', company: 'Acme', total_nam_amount: 100, payment_status: 'Unpaid' }), // 4 days old
+      sale({ date: '2026-05-01', company: 'Acme', total_nam_amount: 500, payment_status: 'Unpaid', due_date: '2026-06-01' }), // 74 days, overdue
+      sale({ date: '2026-03-01', company: 'Beta', total_nam_amount: 300, payment_status: 'Pending' }), // 135 days
+      sale({ date: '2026-07-01', company: 'Gamma', total_nam_amount: 999, payment_status: 'Paid' }), // excluded
+    ]
+    const aging = receivablesAging(rows, '2026-07-14')
+    expect(aging.totalUnpaid).toBe(900)
+    expect(aging.invoices).toBe(3)
+    expect(aging.overdue).toEqual({ amount: 500, invoices: 1 })
+    const byLabel = Object.fromEntries(aging.buckets.map((b) => [b.label, b]))
+    expect(byLabel['0–30 days']).toMatchObject({ amount: 100, invoices: 1 })
+    expect(byLabel['61–90 days']).toMatchObject({ amount: 500, invoices: 1 })
+    expect(byLabel['Over 90 days']).toMatchObject({ amount: 300, invoices: 1 })
+    expect(aging.debtors[0]).toMatchObject({ company: 'Acme', amount: 600, invoices: 2, oldestDays: 74 })
+  })
+
+  it('is empty when everything is paid', () => {
+    const aging = receivablesAging([sale({ total_nam_amount: 100, payment_status: 'Paid' })], '2026-07-14')
+    expect(aging.totalUnpaid).toBe(0)
+    expect(aging.debtors).toHaveLength(0)
   })
 })
 

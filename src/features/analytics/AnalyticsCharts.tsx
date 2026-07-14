@@ -33,18 +33,20 @@ export function TrendChart({
   tickFormat,
   tooltipFormat,
   name,
+  height = 180,
 }: {
   data: TrendPoint[]
   avg: number
   tickFormat: (v: number) => string
   tooltipFormat: (v: number) => string
   name: string
+  height?: number
 }) {
   const theme = useChartTheme()
   const axisTick = { fill: theme.ink, fontSize: 10 }
   const last = data[data.length - 1]
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 20, right: 42, bottom: 0, left: 0 }}>
         <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
         <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} minTickGap={28} />
@@ -139,12 +141,12 @@ export function WeekdayChart({ data, mean }: { data: WeekdayPoint[]; mean: numbe
 
 // ---------------------------------------------------------------- Seasonality: latest year vs the one before
 
-export function SeasonalityChart({ seasonality }: { seasonality: Seasonality }) {
+export function SeasonalityChart({ seasonality, height = 260 }: { seasonality: Seasonality; height?: number }) {
   const theme = useChartTheme()
   const axisTick = { fill: theme.ink, fontSize: 11 }
   return (
     <div>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={height}>
         <LineChart data={seasonality.points} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis dataKey="month" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} />
@@ -340,7 +342,7 @@ export function MarginBinsChart({ bins }: { bins: MarginBin[] }) {
 
 type WeekDotProps = { cx?: number; cy?: number; payload?: WeekPoint }
 
-export function WeeklyMaChart({ data }: { data: WeekPoint[] }) {
+export function WeeklyMaChart({ data, height = 260 }: { data: WeekPoint[]; height?: number }) {
   const theme = useChartTheme()
   const axisTick = { fill: theme.ink, fontSize: 10 }
   const dirDot = (props: WeekDotProps) => {
@@ -351,7 +353,7 @@ export function WeeklyMaChart({ data }: { data: WeekPoint[] }) {
   }
   return (
     <div>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={{ stroke: theme.baseline }} minTickGap={48} />

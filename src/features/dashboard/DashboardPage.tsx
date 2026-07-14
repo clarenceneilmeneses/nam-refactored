@@ -4,6 +4,7 @@ import { Settings, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
+import { AnimatedNumber } from '@/components/shared/AnimatedNumber'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
@@ -19,6 +20,7 @@ import {
 import { useDashboardData } from './useDashboardData'
 import { DrillChips, FilterBar } from './FilterBar'
 import { SalesMatrix } from './SalesMatrix'
+import { Sparkline } from './Sparkline'
 import {
   CategoryDonut,
   CollectionDonut,
@@ -73,10 +75,11 @@ export function DashboardPage() {
           tone="accent"
           icon="trending_up"
           label="Total Revenue"
-          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.revenue)}
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : <AnimatedNumber value={t.revenue} format={formatPeso} />}
           hint={
             !isLoading && (
               <>
+                <Sparkline points={data.timeline.map((p) => p.revenue)} className="mb-1.5 h-7 w-full text-accent" />
                 {data.growth && <GrowthBadge growth={data.growth.revenue} />}
                 <div className="mt-1">
                   <TargetBadge percent={data.target.percent} amount={data.target.amount} />
@@ -89,10 +92,11 @@ export function DashboardPage() {
           tone="good"
           icon="account_balance_wallet"
           label="Net Profit"
-          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.profit)}
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : <AnimatedNumber value={t.profit} format={formatPeso} />}
           hint={
             !isLoading && (
               <>
+                <Sparkline points={data.timeline.map((p) => p.profit)} className="mb-1.5 h-7 w-full text-good-text" />
                 {data.growth && <GrowthBadge growth={data.growth.profit} />}
                 <p className="mt-1 text-xs text-ink-secondary">Margin: {t.margin.toFixed(1)}%</p>
               </>
@@ -103,21 +107,27 @@ export function DashboardPage() {
           tone="accent"
           icon="payments"
           label="Total Collected"
-          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.collected)}
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : <AnimatedNumber value={t.collected} format={formatPeso} />}
           hint={!isLoading && <p className="text-xs font-medium text-critical">Unpaid: {formatPeso(t.unpaid)}</p>}
         />
         <StatCard
           tone="warning"
           icon="receipt_long"
           label="Avg. Order Value"
-          value={isLoading ? <Skeleton className="h-7 w-28" /> : formatPeso(t.avgOrder)}
+          value={isLoading ? <Skeleton className="h-7 w-28" /> : <AnimatedNumber value={t.avgOrder} format={formatPeso} />}
           hint={!isLoading && <p className="text-xs text-ink-secondary">{t.orders.toLocaleString()} Orders</p>}
         />
         <StatCard
           tone="critical"
           icon="warning"
           label="Stock Alerts"
-          value={productsLoading ? <Skeleton className="h-7 w-16" /> : stockAlerts.toLocaleString()}
+          value={
+            productsLoading ? (
+              <Skeleton className="h-7 w-16" />
+            ) : (
+              <AnimatedNumber value={stockAlerts} format={(v) => Math.round(v).toLocaleString()} />
+            )
+          }
           hint={
             <Link to="/products" className="font-medium text-accent-strong hover:underline">
               View Inventory →

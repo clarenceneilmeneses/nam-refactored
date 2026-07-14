@@ -80,7 +80,7 @@ export function totals(rows: SaleRow[]): Totals {
   }
 }
 
-export type TimelinePoint = { key: string; label: string; revenue: number; margin: number }
+export type TimelinePoint = { key: string; label: string; revenue: number; profit: number; margin: number }
 
 /** Buckets present in the data, chronological (legacy GROUP BY — no gap filling). */
 export function timelineSeries(rows: SaleRow[], groupBy: GroupBy): TimelinePoint[] {
@@ -98,6 +98,7 @@ export function timelineSeries(rows: SaleRow[], groupBy: GroupBy): TimelinePoint
       key,
       label,
       revenue: round2(revenue),
+      profit: round2(profit),
       margin: revenue > 0 ? round2((profit / revenue) * 100) : 0,
     }))
 }

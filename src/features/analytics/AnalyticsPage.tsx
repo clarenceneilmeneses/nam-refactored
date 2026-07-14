@@ -1,7 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { MonitorPlay, Printer } from 'lucide-react'
 import { useSales, SALES_KEY } from '@/hooks/useSales'
 import { useCompanyAssignments } from '@/hooks/useCompanyAssignments'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,14 +16,17 @@ import { DrillChips } from '../dashboard/FilterBar'
 import { UNASSIGNED } from '../dashboard/palette'
 import {
   buildInsights,
+  buildRecords,
   COLLECTION_TARGET_DAYS,
   collectionByMonth,
   filterAnalyticsRows,
   marginByOrderSize,
+  milestoneStatus,
   momOf,
   monthlySeries,
   onTimeCollection,
   orderValueMarginR,
+  receivablesAging,
   repeatClientShare,
   seasonalityYoY,
   seriesAvg,
@@ -32,8 +37,6 @@ import {
   weeklyTrend,
   yearsPresent,
   yoyComparison,
-  type Insight,
-  type InsightTone,
   type Mom,
   type YearFilter,
 } from './analyticsLogic'
@@ -46,6 +49,11 @@ import {
   WeekdayChart,
   WeeklyMaChart,
 } from './AnalyticsCharts'
+import { InsightTile } from './InsightTile'
+import { RecordsCard } from './RecordsCard'
+import { ReceivablesCard } from './ReceivablesCard'
+import { ReportPreview, type ReportData } from './ReportPreview'
+import { TvMode } from './TvMode'
 
 const compact = new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 })
 const pesoCompact = (v: number) => `₱${compact.format(v)}`
@@ -57,6 +65,8 @@ export function AnalyticsPage() {
 
   const [year, setYear] = useState<YearFilter>('all')
   const [drills, setDrills] = useState<Drills>(NO_DRILLS)
+  const [tvOpen, setTvOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
 
   const rows = useMemo(() => sales.data ?? [], [sales.data])
   const lookup = useMemo(() => buildManagerLookup(assignments.data ?? []), [assignments.data])
@@ -97,6 +107,9 @@ export function AnalyticsPage() {
       r: orderValueMarginR(yearRows),
       weekly: weeklyTrend(historyRows),
       shares: topShares(yearRows, lookup),
+      records: buildRecords(yearRows, monthly),
+      milestone: milestoneStatus(monthly),
+      aging: receivablesAging(yearRows),
     }
     return { ...computed, insights: buildInsights(computed) }
   }, [rows, lookup, year, drills])
@@ -116,11 +129,38 @@ export function AnalyticsPage() {
   const totalProfit = d.monthly.reduce((s, p) => s + p.profit, 0)
   const totalOrders = d.monthly.reduce((s, p) => s + p.orders, 0)
 
+  const scoped = year !== 'all' || drills.company !== null || drills.category !== null || drills.manager !== null
+  const scope = describeScope(year, drills)
+  const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+  const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0
+  const canPresent = !isLoading && !noData
+
+  const reportData: ReportData = {
+    scope,
+    totals: { revenue: totalRevenue, profit: totalProfit, margin: totalMargin, orders: totalOrders, avgOrder },
+    monthly: d.monthly,
+    insights: d.insights,
+    records: d.records,
+    milestone: d.milestone,
+    scoped,
+    aging: d.aging,
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="Analytics"
         subtitle="Trends, seasonality and patterns across the sales history — complements the Executive Dashboard snapshot."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} disabled={!canPresent}>
+              <Printer className="h-4 w-4" /> Report
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setTvOpen(true)} disabled={!canPresent}>
+              <MonitorPlay className="h-4 w-4" /> TV Mode
+            </Button>
+          </>
+        }
       />
 
       {/* Dimension filters — every chart below recomputes from these. */}
@@ -189,6 +229,8 @@ export function AnalyticsPage() {
         onRemove={(key) => setDrills((prev) => ({ ...prev, [key]: null }))}
         onClearAll={() => setDrills(NO_DRILLS)}
       />
+
+      <RecordsCard records={d.records} milestone={d.milestone} scoped={scoped} loading={isLoading} />
 
       {/* Monthly trends with MoM deltas */}
       <div className="grid grid-cols-12 gap-4">
@@ -308,6 +350,9 @@ export function AnalyticsPage() {
           <MarginBinsChart bins={d.bins} />
         </AnalyticsCard>
 
+        {/* Who owes money and for how long */}
+        <ReceivablesCard aging={d.aging} loading={isLoading} className="col-span-12" />
+
         {/* Weekly momentum + gauges/concentration */}
         <AnalyticsCard
           className="col-span-12 xl:col-span-8"
@@ -377,33 +422,31 @@ export function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {tvOpen && (
+        <TvMode
+          onClose={() => setTvOpen(false)}
+          scope={scope}
+          totals={{ revenue: totalRevenue, profit: totalProfit, margin: totalMargin, orders: totalOrders }}
+          monthly={d.monthly}
+          seasonality={d.seasonality}
+          weekly={d.weekly}
+          insights={d.insights}
+        />
+      )}
+
+      {reportOpen && <ReportPreview onClose={() => setReportOpen(false)} data={reportData} />}
     </div>
   )
 }
 
-/** Icon circle wears the tone; text stays in ink tokens (status is never color-alone). */
-const INSIGHT_TONE: Record<InsightTone, string> = {
-  neutral: 'bg-ink/8 text-ink-secondary',
-  good: 'bg-good/15 text-good-text',
-  warning: 'bg-warning/15 text-warning-text',
-  critical: 'bg-critical/15 text-critical-text',
-}
-
-function InsightTile({ insight }: { insight: Insight }) {
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-hairline p-3.5">
-      <span
-        className={`material-symbols-rounded flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[20px] ${INSIGHT_TONE[insight.tone]}`}
-        aria-hidden
-      >
-        {insight.icon}
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-ink">{insight.headline}</p>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-secondary">{insight.detail}</p>
-      </div>
-    </div>
-  )
+/** Human-readable summary of the active filters, for the report + TV headers. */
+function describeScope(year: YearFilter, drills: Drills): string {
+  const parts: string[] = [year === 'all' ? 'All years' : year]
+  if (drills.company) parts.push(drills.company)
+  if (drills.category) parts.push(drills.category)
+  if (drills.manager) parts.push(drills.manager)
+  return parts.join(' · ')
 }
 
 function describeR(r: number): string {
