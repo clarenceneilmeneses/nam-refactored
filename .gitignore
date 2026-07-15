@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Production data dumps — this repo is PUBLIC. These carry the real users table
+# (bcrypt password hashes, session tokens) and the full sales history (client
+# TINs, addresses, supplier costs, margins). Schema and RPC logic live in
+# supabase/migrations/; the data never belongs in git.
+02_data.sql
+nam_data_postgres_part*.sql
+**/nam_data_postgres_part*.sql
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

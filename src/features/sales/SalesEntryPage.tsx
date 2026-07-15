@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { FileText, Package, Pencil, Plus, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { useProductSearch } from '@/hooks/useProducts'
+import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
 import { useCreateSales, useSales } from '@/hooks/useSales'
 import { useCreateQuotationBatch, useQuotations } from '@/hooks/useQuotations'
@@ -17,6 +18,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { CATEGORIES } from '@/lib/categories'
 import { computeDueDate, computeSaleLine, round2 } from '@/lib/calculations'
+import { canEnterSi } from '@/lib/privileges'
 import { cn } from '@/lib/utils'
 import { formatPeso, toISODate } from '@/lib/format'
 import { nextQuoteRef } from '@/features/quotations/quoteRef'
@@ -102,6 +104,10 @@ function focusItemInput() {
  * database until the queue is submitted as sales or saved as a quotation.
  */
 export function SalesEntryPage() {
+  const { privileges } = useAuth()
+  // SI # entry is the assigned encoder's alone, on new records as much as on
+  // existing ones — otherwise this form is a way around the Records tab rule.
+  const siEditable = canEnterSi(privileges)
   const { data: clients } = useClients()
   const { data: sales } = useSales()
   const { data: quotations } = useQuotations()
@@ -292,7 +298,7 @@ export function SalesEntryPage() {
         total_amount_due: totals.totalAmountDue,
         date_delivered: q.date_delivered || null,
         due_date: q.due_date || computeDueDate(q.date_delivered || null, header.payment_term),
-        si_number: q.si_number || null,
+        si_number: siEditable ? q.si_number || null : null,
         sales_invoice_no: q.supplier_invoice_no || null,
         payment_status: 'Pending',
       }
@@ -546,7 +552,15 @@ export function SalesEntryPage() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="se-si">SI Number</Label>
-                    <Input id="se-si" value={item.si_number} onChange={(e) => setI('si_number', e.target.value)} />
+                    <Input
+                      id="se-si"
+                      value={item.si_number}
+                      disabled={!siEditable}
+                      onChange={(e) => setI('si_number', e.target.value)}
+                    />
+                    {!siEditable && (
+                      <p className="text-[11px] text-ink-muted">Only the assigned SI encoder can set the SI #.</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="se-delivered">Date Delivered</Label>

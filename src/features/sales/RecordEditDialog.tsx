@@ -81,9 +81,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onClose: () => void }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const updateSale = useUpdateSale()
-  const { profile } = useAuth()
-  // Only Ms. Allyson Ashley Aguilera may enter/change the SI #.
-  const siEditable = canEnterSi(profile)
+  const { privileges } = useAuth()
+  // SI # entry is the assigned encoder's alone (Roles tab → Special privileges).
+  const siEditable = canEnterSi(privileges)
 
   useEffect(() => {
     setDraft(sale ? toDraft(sale) : null)
@@ -144,9 +144,9 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
           date_delivered: draft.date_delivered || null,
           payment_term: draft.payment_term || null,
           due_date: draft.due_date || null,
-          // SI # is Allyson-only; everyone else's save preserves the stored value.
+          // SI # is the encoder's; everyone else's save preserves the stored value.
           si_number: siEditable ? draft.si_number || null : (sale.si_number ?? null),
-          // Changing the SI # invalidates any prior review — Jessel must re-approve.
+          // Changing the SI # invalidates any prior review — it must be re-approved.
           ...(siEditable && (draft.si_number || '') !== (sale.si_number ?? '')
             ? { si_reviewed: false, si_reviewed_by: null, si_reviewed_at: null }
             : {}),
@@ -267,7 +267,7 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
               onChange={(e) => set('si_number', e.target.value)}
             />
             {!siEditable && (
-              <p className="text-[11px] text-ink-muted">Only Ms. Allyson Ashley Aguilera can edit the SI #.</p>
+              <p className="text-[11px] text-ink-muted">Only the assigned SI encoder can edit the SI #.</p>
             )}
           </div>
           <div className="space-y-1">

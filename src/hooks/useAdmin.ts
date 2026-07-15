@@ -2,7 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
-import type { PermissionRow, RolePermissionRow, RoleRow, SystemLogRow, UserRow } from '@/types/database'
+import type {
+  PermissionRow,
+  PrivilegeName,
+  RolePermissionRow,
+  RoleRow,
+  SystemLogRow,
+  UserPrivilegeRow,
+  UserRow,
+} from '@/types/database'
 
 export function useUsers() {
   return useQuery({
@@ -47,6 +55,63 @@ export function useRolePermissions() {
       const { data, error } = await supabase.from('role_permissions').select('*')
       if (error) throw new Error(error.message)
       return data as RolePermissionRow[]
+    },
+  })
+}
+
+// ---------- Person-level privileges (12_si_privileges.sql) ----------
+
+export const USER_PRIVILEGES_KEY = ['user_privileges'] as const
+
+export function useUserPrivileges() {
+  return useQuery({
+    queryKey: USER_PRIVILEGES_KEY,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('user_privileges').select('*')
+      if (error) throw new Error(error.message)
+      return data as UserPrivilegeRow[]
+    },
+  })
+}
+
+type SetPrivilegeInput = {
+  user_id: number
+  privilege: PrivilegeName
+  granted: boolean
+  /** Full name for the log line — the rules are about people, so name them. */
+  user_label: string
+}
+
+/**
+ * Grant or revoke one person's privilege. Unlike role permissions these are
+ * never implied by Super Admin, so an empty grant list means nobody holds it.
+ */
+export function useSetUserPrivilege() {
+  const queryClient = useQueryClient()
+  const { profile } = useAuth()
+  return useMutation({
+    mutationFn: async ({ user_id, privilege, granted }: SetPrivilegeInput) => {
+      if (granted) {
+        const { error } = await supabase
+          .from('user_privileges')
+          .insert({ user_id, privilege, granted_by: profile?.id ?? null })
+        if (error) throw new Error(error.message)
+      } else {
+        const { error } = await supabase
+          .from('user_privileges')
+          .delete()
+          .eq('user_id', user_id)
+          .eq('privilege', privilege)
+        if (error) throw new Error(error.message)
+      }
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: USER_PRIVILEGES_KEY })
+      logAction(
+        profile?.id,
+        vars.granted ? 'Granted Privilege' : 'Revoked Privilege',
+        `${vars.granted ? 'Granted' : 'Revoked'} "${vars.privilege}" ${vars.granted ? 'to' : 'from'} ${vars.user_label}`,
+      )
     },
   })
 }

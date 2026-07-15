@@ -23,8 +23,8 @@ export type SaleRow = {
   payment_status: string | null
   date_paid: string | null
   si_number: string | null
-  /** SI # review workflow (11_si_review.sql): only Jessel sets these; Paid is blocked until si_reviewed. */
-  si_reviewed: boolean | null
+  /** SI # review workflow (11_si_review.sql): only the review_si holder sets these; Paid is blocked until si_reviewed. NOT NULL DEFAULT false. */
+  si_reviewed: boolean
   si_reviewed_by: number | null
   si_reviewed_at: string | null
   buyer: string | null
@@ -114,6 +114,18 @@ export type RoleRow = { id: number; name: string; description: string | null }
 export type PermissionRow = { id: number; name: string; description: string | null }
 export type RolePermissionRow = { role_id: number; permission_id: number }
 
+/**
+ * Per-person grants for rules a role can't express (12_si_privileges.sql).
+ * Super Admin does NOT implicitly hold these — only an explicit grant does.
+ */
+export type UserPrivilegeRow = {
+  user_id: number
+  privilege: PrivilegeName
+  granted_at: string
+  granted_by: number | null
+}
+export type UserPrivilegeInsert = { user_id: number; privilege: PrivilegeName; granted_by?: number | null }
+
 export type SystemLogRow = {
   id: number
   user_id: number
@@ -161,6 +173,18 @@ export type PermissionName =
   | 'view_logistics'
   | 'manage_users'
   | 'manage_finance'
+
+/**
+ * Person-level privileges (user_privileges), distinct from role permissions:
+ * these apply to named individuals, never to everyone sharing a role.
+ */
+export type PrivilegeName = 'enter_si' | 'review_si' | 'mark_paid'
+
+export const PRIVILEGES: ReadonlyArray<{ name: PrivilegeName; label: string; description: string }> = [
+  { name: 'enter_si', label: 'Enter SI #', description: 'Fill in or change a record’s SI #' },
+  { name: 'review_si', label: 'Review SI #', description: 'Check an SI # and mark it reviewed' },
+  { name: 'mark_paid', label: 'Mark Paid', description: 'Change a record’s Paid status, once its SI # is reviewed' },
+]
 
 export type Database = {
   public: {
@@ -222,6 +246,20 @@ export type Database = {
           },
         ]
       }
+      user_privileges: {
+        Row: UserPrivilegeRow
+        Insert: UserPrivilegeInsert
+        Update: Partial<UserPrivilegeInsert>
+        Relationships: [
+          {
+            foreignKeyName: 'user_privileges_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       system_logs: {
         Row: SystemLogRow
         Insert: SystemLogInsert
@@ -232,6 +270,7 @@ export type Database = {
     Views: Record<string, never>
     Functions: {
       has_permission: { Args: { perm: string }; Returns: boolean }
+      has_privilege: { Args: { p_privilege: PrivilegeName }; Returns: boolean }
       find_product_id: { Args: { p_item: string }; Returns: number | null }
       create_quotation_batch: {
         Args: {

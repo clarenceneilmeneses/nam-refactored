@@ -11,7 +11,7 @@ import type { Session } from '@supabase/supabase-js'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
-import type { PermissionName, UserRow } from '@/types/database'
+import type { PermissionName, PrivilegeName, UserRow } from '@/types/database'
 
 export type Profile = UserRow & { role_name: string | null }
 
@@ -19,8 +19,11 @@ type AuthContextValue = {
   session: Session | null
   profile: Profile | null
   permissions: Set<string>
+  /** Person-level grants (user_privileges) — NOT implied by Super Admin. */
+  privileges: Set<PrivilegeName>
   loading: boolean
   hasPermission: (perm: PermissionName) => boolean
+  hasPrivilege: (privilege: PrivilegeName) => boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   /** Re-fetch the profile row (e.g. after the user edits their own name). */
@@ -89,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
+  const [privileges, setPrivileges] = useState<Set<PrivilegeName>>(new Set())
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -102,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!s) {
         setProfile(null)
         setPermissions(new Set())
+        setPrivileges(new Set())
         setLoading(false)
       }
     })
@@ -135,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Signed in via Supabase Auth but not linked to a legacy profile row.
         setProfile(null)
         setPermissions(new Set())
+        setPrivileges(new Set())
         setLoading(false)
         return
       }
@@ -153,6 +159,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setPermissions(new Set())
       }
+
+      // Person-level grants (12_si_privileges.sql). Kept separate from role
+      // permissions: Super Admin must not imply these. A missing table (before
+      // the migration) leaves the set empty rather than breaking the session.
+      const { data: grants, error: grantsError } = await supabase
+        .from('user_privileges')
+        .select('privilege')
+        .eq('user_id', rest.id)
+      if (cancelled) return
+      if (grantsError) console.error('Could not load user privileges:', grantsError.message)
+      setPrivileges(new Set((grants ?? []).map((g) => g.privilege)))
+
       setLoading(false)
     }
     load()
@@ -219,6 +237,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((perm: PermissionName) => permissions.has(perm), [permissions])
 
+  const hasPrivilege = useCallback((privilege: PrivilegeName) => privileges.has(privilege), [privileges])
+
   const refreshProfile = useCallback(() => setReloadKey((k) => k + 1), [])
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -253,8 +273,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [profile, session])
 
   const value = useMemo(
-    () => ({ session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile }),
-    [session, profile, permissions, loading, hasPermission, signIn, signOut, refreshProfile],
+    () => ({ session, profile, permissions, privileges, loading, hasPermission, hasPrivilege, signIn, signOut, refreshProfile }),
+    [session, profile, permissions, privileges, loading, hasPermission, hasPrivilege, signIn, signOut, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

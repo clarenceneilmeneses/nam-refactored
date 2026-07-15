@@ -3,9 +3,11 @@ import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSales, useUpdateSale, SALES_KEY } from '@/hooks/useSales'
+import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
+import { canEnterSi, canMarkPaid, paidBlockReason } from '@/lib/privileges'
 import { DataTable } from '@/components/shared/DataTable'
-import { OverdueBadge } from '@/components/shared/StatusBadge'
+import { OverdueBadge, PaymentStatusBadge } from '@/components/shared/StatusBadge'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { Input } from '@/components/ui/input'
@@ -17,15 +19,30 @@ import type { SaleRow } from '@/types/database'
 
 const col = createColumnHelper<SaleRow>()
 
+/**
+ * Same SI # workflow as the Records tab: only the assigned SI reviewer may set
+ * a record's status, and only once its SI # is reviewed. Everyone else gets a
+ * read-only badge.
+ */
 function PaymentStatusEditor({ sale }: { sale: SaleRow }) {
   const updateSale = useUpdateSale()
+  const { privileges } = useAuth()
+
+  if (!canMarkPaid(privileges)) return <PaymentStatusBadge status={sale.payment_status} />
+
+  const paidBlocked = paidBlockReason(privileges, sale)
   return (
     <Select
       className="h-8 w-28 text-xs"
       value={sale.payment_status ?? 'Pending'}
       aria-label={`Payment status for sale ${sale.id}`}
+      title={paidBlocked ?? undefined}
       onChange={async (e) => {
         const status = e.target.value
+        if (status === 'Paid' && paidBlocked) {
+          toast.error(paidBlocked)
+          return
+        }
         try {
           await updateSale.mutateAsync({
             id: sale.id,
@@ -33,6 +50,10 @@ function PaymentStatusEditor({ sale }: { sale: SaleRow }) {
               payment_status: status,
               // Stamp date_paid when marked Paid; clear it when reverted.
               date_paid: status === 'Paid' ? new Date().toISOString() : null,
+            },
+            log: {
+              action: 'Updated Payment Status',
+              description: `Marked sale #${sale.id} (${sale.item ?? ''}) as ${status}`,
             },
           })
           toast.success(`Sale #${sale.id} marked ${status}`)
@@ -43,14 +64,21 @@ function PaymentStatusEditor({ sale }: { sale: SaleRow }) {
     >
       <option>Pending</option>
       <option>Partial</option>
-      <option>Paid</option>
+      <option disabled={!!paidBlocked}>Paid</option>
     </Select>
   )
 }
 
+/** SI # entry is the encoder's alone — everyone else sees it read-only. */
 function SiNumberEditor({ sale }: { sale: SaleRow }) {
   const updateSale = useUpdateSale()
+  const { privileges } = useAuth()
   const [value, setValue] = useState(sale.si_number ?? '')
+
+  if (!canEnterSi(privileges)) {
+    return <span className="text-xs text-ink-secondary">{sale.si_number || '—'}</span>
+  }
+
   return (
     <Input
       className="h-8 w-24 text-xs"
@@ -59,7 +87,20 @@ function SiNumberEditor({ sale }: { sale: SaleRow }) {
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => {
         if (value !== (sale.si_number ?? '')) {
-          updateSale.mutate({ id: sale.id, patch: { si_number: value || null } })
+          updateSale.mutate({
+            id: sale.id,
+            patch: {
+              si_number: value || null,
+              // Changing the SI # invalidates any prior review — it must be re-approved.
+              si_reviewed: false,
+              si_reviewed_by: null,
+              si_reviewed_at: null,
+            },
+            log: {
+              action: 'Updated Record',
+              description: `Updated SI # for record #${sale.id} (${sale.item ?? ''})`,
+            },
+          })
         }
       }}
     />

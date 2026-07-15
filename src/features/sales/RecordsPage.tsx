@@ -32,7 +32,7 @@ import {
 import { BulkDeliverDialog } from './BulkDeliverDialog'
 import { RecordEditDialog } from './RecordEditDialog'
 import { exportSalesCsv } from './exportCsv'
-import { canReviewSi } from '@/lib/privileges'
+import { canMarkPaid, canReviewSi, paidBlockReason, unpaidBlockReason } from '@/lib/privileges'
 
 const col = createColumnHelper<SaleRow>()
 
@@ -61,9 +61,10 @@ export function RecordsPage() {
   useRealtimeInvalidate('sales', SALES_KEY)
   const updateSale = useUpdateSale()
   const deleteSale = useDeleteSale()
-  const { hasPermission, profile } = useAuth()
+  const { hasPermission, profile, privileges } = useAuth()
   const canManage = hasPermission('manage_sales')
-  const canReview = canReviewSi(profile)
+  const canReview = canReviewSi(privileges)
+  const canPay = canMarkPaid(privileges)
 
   const [search, setSearch] = useState('')
   const [range, setRange] = useState<DateRange>({ preset: 'all', from: null, to: null })
@@ -165,11 +166,9 @@ export function RecordsPage() {
 
   async function togglePayment(sale: SaleRow) {
     const nowPaid = sale.payment_status !== 'Paid'
-    // Payment is gated on Ms. Jessel Rose Genotiva's SI # review. Gate only on an
-    // explicit false so that, before 11_si_review.sql runs (column absent →
-    // undefined), payments aren't locked app-wide.
-    if (nowPaid && sale.si_reviewed === false) {
-      toast.error('This record’s SI # must be reviewed by Ms. Jessel Rose Genotiva before it can be marked Paid.')
+    const blocked = nowPaid ? paidBlockReason(privileges, sale) : unpaidBlockReason(privileges)
+    if (blocked) {
+      toast.error(blocked)
       return
     }
     try {
@@ -301,23 +300,26 @@ export function RecordsPage() {
         }),
         col.accessor('payment_status', {
           header: 'Payment',
-          cell: ({ row }) =>
-            canManage ? (
+          // Paid is the SI reviewer's call alone — everyone else sees a
+          // read-only badge rather than a control that would fail on click.
+          cell: ({ row }) => {
+            const isPaid = row.original.payment_status === 'Paid'
+            const blocked = isPaid ? unpaidBlockReason(privileges) : paidBlockReason(privileges, row.original)
+            if (!canManage || !canPay) {
+              return <PaymentStatusBadge status={row.original.payment_status} />
+            }
+            return (
               <button
                 type="button"
-                className="cursor-pointer"
-                title={
-                  row.original.payment_status !== 'Paid' && row.original.si_reviewed === false
-                    ? 'SI # must be reviewed by Ms. Jessel Rose Genotiva before this can be marked Paid'
-                    : `Mark as ${row.original.payment_status === 'Paid' ? 'Pending' : 'Paid'}`
-                }
+                className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!!blocked}
+                title={blocked ?? `Mark as ${isPaid ? 'Pending' : 'Paid'}`}
                 onClick={() => togglePayment(row.original)}
               >
                 <PaymentStatusBadge status={row.original.payment_status} />
               </button>
-            ) : (
-              <PaymentStatusBadge status={row.original.payment_status} />
-            ),
+            )
+          },
         }),
         col.accessor('date_delivered', {
           header: 'Delivered',
@@ -399,7 +401,7 @@ export function RecordsPage() {
         }),
       ] as ColumnDef<SaleRow, unknown>[],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, statuses, canManage, canReview, today, updateSale.isPending],
+    [selected, statuses, canManage, canReview, canPay, privileges, today, updateSale.isPending],
   )
 
   if (error) return <p className="text-sm text-critical">Couldn’t load records: {(error as Error).message}</p>

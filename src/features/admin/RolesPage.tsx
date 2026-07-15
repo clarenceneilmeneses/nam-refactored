@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Crown, Pencil, Plus, ShieldCheck, Trash2, UsersRound } from 'lucide-react'
+import { Crown, KeyRound, Pencil, Plus, ShieldCheck, Trash2, UsersRound } from 'lucide-react'
 import {
   useDeleteRole,
   usePermissionList,
   useRolePermissions,
   useRoles,
   useSaveRole,
+  useSetUserPrivilege,
+  useUserPrivileges,
   useUsers,
 } from '@/hooks/useAdmin'
 import { SUPER_ADMIN_ROLE_ID } from '@/components/layout/PermissionGate'
@@ -15,12 +17,12 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TableSkeleton } from '@/components/ui/skeleton'
-import type { PermissionRow, RoleRow } from '@/types/database'
+import { PRIVILEGES, type PermissionRow, type PrivilegeName, type RoleRow, type UserRow } from '@/types/database'
 
 export function RolesPage() {
   const { data: roles, isLoading, error } = useRoles()
@@ -166,6 +168,8 @@ export function RolesPage() {
         </CardContent>
       </Card>
 
+      <SpecialPrivilegesCard users={users ?? []} />
+
       <RoleFormDialog
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -198,6 +202,112 @@ export function RolesPage() {
         }}
       />
     </div>
+  )
+}
+
+/**
+ * Person-level privileges (user_privileges), which a role can't express: the SI
+ * encoder and reviewer share the Super Admin role with ~8 other accounts, so
+ * granting these to a role would hand them to every Super Admin. Super Admin
+ * deliberately does NOT inherit them — an empty column means nobody holds it.
+ */
+function SpecialPrivilegesCard({ users }: { users: UserRow[] }) {
+  const { data: grants, isLoading, error } = useUserPrivileges()
+  const setPrivilege = useSetUserPrivilege()
+
+  const held = useMemo(() => {
+    const set = new Set<string>()
+    for (const g of grants ?? []) set.add(`${g.user_id}:${g.privilege}`)
+    return set
+  }, [grants])
+
+  const holderCount = useMemo(() => {
+    const counts = new Map<PrivilegeName, number>()
+    for (const g of grants ?? []) counts.set(g.privilege, (counts.get(g.privilege) ?? 0) + 1)
+    return counts
+  }, [grants])
+
+  async function toggle(user: UserRow, privilege: PrivilegeName, granted: boolean) {
+    const label = user.full_name || user.username
+    try {
+      await setPrivilege.mutateAsync({ user_id: user.id, privilege, granted, user_label: label })
+      toast.success(`${granted ? 'Granted' : 'Revoked'} ${privilege} ${granted ? 'to' : 'from'} ${label}`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
+  const orphaned = PRIVILEGES.filter((p) => (holderCount.get(p.name) ?? 0) === 0)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5 text-base">
+          <KeyRound className="h-4 w-4 text-ink-secondary" aria-hidden /> Special Privileges
+        </CardTitle>
+        <CardDescription>
+          Assigned per person, not per role — these apply to one individual, never to everyone sharing their role. Super
+          Admin does not grant them. Changes apply on the affected user’s next sign-in or refresh.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 p-0 pb-4">
+        {error ? (
+          <p className="px-4 text-sm text-critical">Couldn’t load privileges: {(error as Error).message}</p>
+        ) : isLoading ? (
+          <div className="px-4">
+            <TableSkeleton />
+          </div>
+        ) : (
+          <>
+            {orphaned.length > 0 && (
+              <p className="mx-4 rounded-md bg-warning/15 px-3 py-2 text-xs text-warning-text">
+                Nobody currently holds {orphaned.map((p) => p.label).join(', ')}. Records can’t move through the SI
+                workflow until someone does.
+              </p>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-hairline bg-page/60 text-left text-[11px] font-semibold tracking-wide text-ink-muted uppercase">
+                    <th className="px-3 py-2">User</th>
+                    {PRIVILEGES.map((p) => (
+                      <th key={p.name} className="px-2 py-2 text-center font-mono normal-case" title={p.description}>
+                        {p.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-b border-hairline last:border-0 hover:bg-page/70">
+                      <td className="px-3 py-2">
+                        <p className="font-medium">{u.full_name || u.username}</p>
+                        <p className="text-xs text-ink-muted">{u.username}</p>
+                      </td>
+                      {PRIVILEGES.map((p) => {
+                        const has = held.has(`${u.id}:${p.name}`)
+                        return (
+                          <td key={p.name} className="px-2 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 cursor-pointer accent-[#2a78d6] disabled:cursor-not-allowed"
+                              checked={has}
+                              disabled={setPrivilege.isPending}
+                              onChange={(e) => toggle(u, p.name, e.target.checked)}
+                              aria-label={`${p.label} for ${u.full_name || u.username}`}
+                            />
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
