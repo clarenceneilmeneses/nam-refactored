@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { Bookmark, CheckCircle2, CircleDashed, CircleDot, Download, FilterX, PackageCheck, Pencil, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDeleteSale, useSales, useUpdateSale, SALES_KEY } from '@/hooks/useSales'
+import { useBulkReviewSi, useDeleteSale, useSales, useUpdateSale, SALES_KEY } from '@/hooks/useSales'
 import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { DataTable } from '@/components/shared/DataTable'
@@ -26,8 +26,10 @@ import {
   matchesDelivery,
   matchesPayment,
   matchesRecordSearch,
+  matchesSiReview,
   type DeliveryFilter,
   type PaymentFilter,
+  type SiReviewFilter,
 } from './recordsLogic'
 import { BulkDeliverDialog } from './BulkDeliverDialog'
 import { RecordEditDialog } from './RecordEditDialog'
@@ -61,6 +63,7 @@ export function RecordsPage() {
   useRealtimeInvalidate('sales', SALES_KEY)
   const updateSale = useUpdateSale()
   const deleteSale = useDeleteSale()
+  const bulkReviewSi = useBulkReviewSi()
   const { hasPermission, profile, privileges } = useAuth()
   const canManage = hasPermission('manage_sales')
   const canReview = canReviewSi(privileges)
@@ -72,8 +75,10 @@ export function RecordsPage() {
   const [category, setCategory] = useState('')
   const [delivery, setDelivery] = useState<DeliveryFilter>('')
   const [payment, setPayment] = useState<PaymentFilter>('')
+  const [siReview, setSiReview] = useState<SiReviewFilter>('')
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [editing, setEditing] = useState<SaleRow | null>(null)
   const [deleting, setDeleting] = useState<SaleRow | null>(null)
 
@@ -100,15 +105,16 @@ export function RecordsPage() {
           (!category || s.category === category) &&
           matchesDelivery(s, delivery, statuses) &&
           matchesPayment(s, payment) &&
+          matchesSiReview(s, siReview) &&
           matchesRecordSearch(s, search),
       ),
-    [sales, range, company, category, delivery, payment, search, statuses],
+    [sales, range, company, category, delivery, payment, siReview, search, statuses],
   )
 
   const kpis = useMemo(() => computeKpis(filtered, today), [filtered, today])
 
   const hasFilters =
-    !!search || range.preset !== 'all' || !!company || !!category || !!delivery || !!payment
+    !!search || range.preset !== 'all' || !!company || !!category || !!delivery || !!payment || !!siReview
 
   function clearFilters() {
     setSearch('')
@@ -117,10 +123,22 @@ export function RecordsPage() {
     setCategory('')
     setDelivery('')
     setPayment('')
+    setSiReview('')
   }
+
+  // A row is selectable when this user can act on it in bulk: deliver it
+  // (manage_sales, still undelivered) or approve its SI # (the reviewer).
+  const deliverable = (s: SaleRow) => canManage && !s.date_delivered
+  const reviewable = (s: SaleRow) => canReview && !!s.si_number && s.si_reviewed !== true
+  const selectable = (s: SaleRow) => deliverable(s) || reviewable(s)
 
   const selectedRows = useMemo(
     () => (sales ?? []).filter((s) => selected.has(s.id) && !s.date_delivered),
+    [sales, selected],
+  )
+
+  const reviewRows = useMemo(
+    () => (sales ?? []).filter((s) => selected.has(s.id) && !!s.si_number && s.si_reviewed !== true),
     [sales, selected],
   )
 
@@ -206,23 +224,31 @@ export function RecordsPage() {
   const columns = useMemo<ColumnDef<SaleRow, unknown>[]>(
     () =>
       [
+        // The first four columns are pinned so a row stays identifiable while
+        // scrolling sideways. Sticky offsets are cumulative, so each pinned
+        // header carries a FIXED width (border-box: stable under compact
+        // density, which only tightens vertical padding): 2.5 + 7 + 6 = 15.5rem.
         col.display({
           id: 'select',
+          meta: {
+            thClassName: 'sticky left-0 z-10 w-10 min-w-10 bg-page',
+            tdClassName: 'sticky left-0 bg-inherit',
+          },
           header: ({ table }) => {
             const pageSelectable = table
               .getRowModel()
               .rows.map((r) => r.original)
-              .filter((s) => !s.date_delivered)
+              .filter(selectable)
             const allSelected = pageSelectable.length > 0 && pageSelectable.every((s) => selected.has(s.id))
             return (
               <input
                 type="checkbox"
                 className="h-4 w-4 cursor-pointer accent-[#2a78d6]"
                 checked={allSelected}
-                disabled={pageSelectable.length === 0 || !canManage}
+                disabled={pageSelectable.length === 0}
                 onChange={() => setMany(pageSelectable.map((s) => s.id), !allSelected)}
                 onClick={(e) => e.stopPropagation()}
-                aria-label="Select all undelivered rows on this page"
+                aria-label="Select all actionable rows on this page"
               />
             )
           },
@@ -231,7 +257,7 @@ export function RecordsPage() {
               type="checkbox"
               className="h-4 w-4 cursor-pointer accent-[#2a78d6] disabled:cursor-not-allowed disabled:opacity-30"
               checked={selected.has(row.original.id)}
-              disabled={!!row.original.date_delivered || !canManage}
+              disabled={!selectable(row.original)}
               onChange={() => toggleOne(row.original.id)}
               aria-label={`Select ${row.original.item ?? `sale #${row.original.id}`}`}
             />
@@ -239,10 +265,28 @@ export function RecordsPage() {
         }),
         col.accessor('date', {
           header: 'Date',
+          meta: {
+            thClassName: 'sticky left-10 z-10 w-28 min-w-28 bg-page',
+            tdClassName: 'sticky left-10 bg-inherit',
+          },
           cell: (c) => <span className="whitespace-nowrap">{formatDate(c.getValue())}</span>,
         }),
-        col.accessor('sn', { header: 'S/N', cell: (c) => c.getValue() || '—' }),
-        col.accessor('po_number', { header: 'PO', cell: (c) => c.getValue() || '—' }),
+        col.accessor('sn', {
+          header: 'S/N',
+          meta: {
+            thClassName: 'sticky left-[9.5rem] z-10 w-24 min-w-24 bg-page',
+            tdClassName: 'sticky left-[9.5rem] bg-inherit',
+          },
+          cell: (c) => <span className="block max-w-18 truncate" title={c.getValue() ?? ''}>{c.getValue() || '—'}</span>,
+        }),
+        col.accessor('po_number', {
+          header: 'PO',
+          meta: {
+            thClassName: 'sticky left-[15.5rem] z-10 w-28 min-w-28 bg-page shadow-[8px_0_8px_-8px_rgba(0,0,0,0.18)]',
+            tdClassName: 'sticky left-[15.5rem] bg-inherit shadow-[8px_0_8px_-8px_rgba(0,0,0,0.18)]',
+          },
+          cell: (c) => <span className="block max-w-22 truncate" title={c.getValue() ?? ''}>{c.getValue() || '—'}</span>,
+        }),
         col.accessor('company', {
           header: 'Company',
           cell: (c) => <span className="block max-w-48 truncate" title={c.getValue() ?? ''}>{c.getValue() || '—'}</span>,
@@ -418,6 +462,11 @@ export function RecordsPage() {
                 <PackageCheck className="h-4 w-4" /> Deliver Selected ({selectedRows.length})
               </Button>
             )}
+            {canReview && reviewRows.length > 0 && (
+              <Button variant="outline" onClick={() => setReviewOpen(true)}>
+                <CheckCircle2 className="h-4 w-4" /> Review SI # ({reviewRows.length})
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => exportSalesCsv(filtered)}>
               <Download className="h-3.5 w-3.5" /> Export CSV ({filtered.length.toLocaleString()})
             </Button>
@@ -464,6 +513,17 @@ export function RecordsPage() {
           <option value="Unpaid">Unpaid</option>
           <option value="Paid">Paid</option>
         </Select>
+        <Select
+          className="w-auto"
+          value={siReview}
+          onChange={(e) => setSiReview(e.target.value as SiReviewFilter)}
+          aria-label="SI review filter"
+        >
+          <option value="">All SI #</option>
+          <option value="pending">SI pending review</option>
+          <option value="reviewed">SI reviewed</option>
+          <option value="none">No SI #</option>
+        </Select>
         <Select className="w-auto max-w-56" value={company} onChange={(e) => setCompany(e.target.value)} aria-label="Company filter">
           <option value="">All companies</option>
           {companies.map((c) => (
@@ -493,9 +553,12 @@ export function RecordsPage() {
           pageSize={50}
           stickyHeader
           rowClassName={(row) => {
+            // Solid tints (tone mixed over surface), not /10 opacities: the four
+            // pinned columns inherit this background, and a translucent one
+            // would let the scrolling columns show through underneath them.
             const badge = dueBadge(row, today)
-            if (badge.kind === 'overdue') return 'bg-critical/10'
-            if (badge.kind === 'due-soon') return 'bg-warning/15'
+            if (badge.kind === 'overdue') return 'bg-[color-mix(in_srgb,var(--color-critical)_10%,var(--color-surface))]'
+            if (badge.kind === 'due-soon') return 'bg-[color-mix(in_srgb,var(--color-warning)_15%,var(--color-surface))]'
             return 'bg-surface'
           }}
         />
@@ -506,6 +569,24 @@ export function RecordsPage() {
         rows={selectedRows}
         onClose={() => setBulkOpen(false)}
         onDelivered={() => setSelected(new Set())}
+      />
+      <ConfirmDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        title={`Mark ${reviewRows.length} SI #(s) reviewed?`}
+        description="This approves every selected record's SI # at once and clears them to be marked Paid. Only confirm for SI #s you have actually checked."
+        confirmLabel="Mark reviewed"
+        busy={bulkReviewSi.isPending}
+        onConfirm={async () => {
+          try {
+            const rows = await bulkReviewSi.mutateAsync(reviewRows)
+            toast.success(`${rows.length} SI #(s) marked reviewed`)
+            setMany(rows.map((r) => r.id), false)
+            setReviewOpen(false)
+          } catch (e) {
+            toast.error((e as Error).message)
+          }
+        }}
       />
       <RecordEditDialog sale={editing} onClose={() => setEditing(null)} />
       <ConfirmDialog

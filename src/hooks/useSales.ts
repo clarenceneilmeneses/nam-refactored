@@ -97,6 +97,36 @@ export function useDeleteSale() {
 }
 
 /**
+ * Bulk "Mark reviewed" for the SI reviewer — one UPDATE across every selected
+ * record. The sales_si_privileges trigger re-checks review_si and stamps
+ * si_reviewed_by / si_reviewed_at server-side, so a forged client can't
+ * approve on someone else's behalf.
+ */
+export function useBulkReviewSi() {
+  const queryClient = useQueryClient()
+  const { profile } = useAuth()
+  return useMutation({
+    mutationFn: async (rows: SaleRow[]) => {
+      const { error } = await supabase
+        .from('sales')
+        .update({
+          si_reviewed: true,
+          si_reviewed_by: profile?.id ?? null,
+          si_reviewed_at: new Date().toISOString(),
+        })
+        .in('id', rows.map((r) => r.id))
+      if (error) throw new Error(error.message)
+      return rows
+    },
+    onSuccess: (rows) => {
+      queryClient.invalidateQueries({ queryKey: SALES_KEY })
+      const ids = rows.map((r) => `#${r.id}`).join(', ')
+      logAction(profile?.id, 'Reviewed SI #', `Bulk reviewed ${rows.length} SI #(s): records ${ids}`.slice(0, 300))
+    },
+  })
+}
+
+/**
  * Single delivery entry point shared by Records (bulk / partial) and
  * Logistics (single full delivery) — calls the deliver_items RPC, which
  * splits partially delivered rows and stamps due dates transactionally.

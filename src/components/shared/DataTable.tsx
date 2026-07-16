@@ -126,7 +126,10 @@ export function DataTable<T>({
                 <tr
                   key={row.id}
                   className={cn(
-                    'border-b border-hairline last:border-0 hover:bg-page/70',
+                    // Solid hover color (page 70% over surface): pinned cells use
+                    // bg-inherit, so a translucent tr background would let the
+                    // columns scrolling underneath them show through.
+                    'border-b border-hairline last:border-0 hover:bg-[color-mix(in_srgb,var(--color-page)_70%,var(--color-surface))]',
                     rowClassName?.(row.original),
                   )}
                 >

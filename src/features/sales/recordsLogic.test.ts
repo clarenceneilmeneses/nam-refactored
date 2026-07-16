@@ -6,6 +6,7 @@ import {
   matchesDelivery,
   matchesPayment,
   matchesRecordSearch,
+  matchesSiReview,
 } from './recordsLogic'
 import type { SaleRow } from '@/types/database'
 
@@ -136,6 +137,22 @@ describe('filters', () => {
     expect(matchesPayment(sale({ payment_status: 'Pending' }), 'Unpaid')).toBe(true)
     expect(matchesPayment(sale({ payment_status: null }), 'Unpaid')).toBe(true)
     expect(matchesPayment(sale({ payment_status: 'Paid' }), 'Unpaid')).toBe(false)
+  })
+
+  it('matchesSiReview splits pending / reviewed / no SI #', () => {
+    const pending = sale({ si_number: 'SI-1', si_reviewed: false })
+    const reviewed = sale({ si_number: 'SI-2', si_reviewed: true })
+    const noSi = sale({ si_number: null })
+    for (const row of [pending, reviewed, noSi]) {
+      expect(matchesSiReview(row, '')).toBe(true)
+    }
+    expect(matchesSiReview(pending, 'pending')).toBe(true)
+    expect(matchesSiReview(reviewed, 'pending')).toBe(false)
+    expect(matchesSiReview(noSi, 'pending')).toBe(false) // nothing to review yet
+    expect(matchesSiReview(reviewed, 'reviewed')).toBe(true)
+    expect(matchesSiReview(pending, 'reviewed')).toBe(false)
+    expect(matchesSiReview(noSi, 'none')).toBe(true)
+    expect(matchesSiReview(pending, 'none')).toBe(false)
   })
 
   it('matchesRecordSearch scans item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier', () => {

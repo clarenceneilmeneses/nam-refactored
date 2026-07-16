@@ -118,6 +118,22 @@ export function matchesPayment(sale: SaleRow, filter: PaymentFilter): boolean {
   return true
 }
 
+export type SiReviewFilter = '' | 'pending' | 'reviewed' | 'none'
+
+/** SI # review state: pending = has an SI # awaiting the reviewer's approval. */
+export function matchesSiReview(sale: SaleRow, filter: SiReviewFilter): boolean {
+  switch (filter) {
+    case 'pending':
+      return !!sale.si_number && sale.si_reviewed !== true
+    case 'reviewed':
+      return sale.si_reviewed === true
+    case 'none':
+      return !sale.si_number
+    default:
+      return true
+  }
+}
+
 /** Text search across item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier. */
 export function matchesRecordSearch(sale: SaleRow, query: string): boolean {
   const q = query.trim().toLowerCase()
