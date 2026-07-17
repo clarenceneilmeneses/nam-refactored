@@ -10,6 +10,7 @@ import { parseCurrency, round2 } from '@/lib/calculations'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
 import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
+import { PRODUCTS_KEY, saveProductUnit, useProducts } from '@/hooks/useProducts'
 import { computeDocTotals, type VatMode } from './formalDocMath'
 import { SIGNATURE_KEYS, fileToDataUrl, itemImageKey, loadCachedImage, saveCachedImage } from './quoteImages'
 
@@ -206,14 +207,47 @@ export function FormalQuotePreview({
       })
       .catch((e) => toast.error(`Couldn't save client details: ${(e as Error).message}`))
   }
+  // UOM prefills from products.unit and edits save back the same way as the
+  // contact details — keyed by the ORIGINAL item name, so retitling the
+  // description on the doc stays cosmetic.
+  const { data: products, isPending: productsPending } = useProducts()
+  const uomRef = useRef<string[] | null>(null)
+  const uomSavedRef = useRef<string[] | null>(null)
+
+  const persistUomEdits = () => {
+    const uoms = uomRef.current
+    const saved = uomSavedRef.current
+    if (!uoms || !saved) return
+    const changed = items
+      .map((line, i) => ({ item: line.item, uom: (uoms[i] ?? '').trim(), before: (saved[i] ?? '').trim() }))
+      .filter(({ item, uom, before }) => item.trim() !== '' && uom !== '' && uom !== before)
+    if (changed.length === 0) return
+    uomSavedRef.current = [...uoms]
+    void Promise.all(changed.map(({ item, uom }) => saveProductUnit(item, uom)))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+        logAction(
+          profile?.id,
+          'Saved Product',
+          `Updated UOM from quote: ${changed.map((c) => `${c.item} → ${c.uom}`).join(', ').slice(0, 300)}`,
+        )
+        toast.success(`UOM saved for ${changed.length} item(s) — it'll auto-fill on the next quote`)
+      })
+      .catch((e) => toast.error(`Couldn't save UOM: ${(e as Error).message}`))
+  }
+
+  const persistAll = () => {
+    persistClientDetails()
+    persistUomEdits()
+  }
   // Persist on close too (Close button, Escape, navigating away) — the ref
   // keeps the unmount cleanup pointed at the latest values.
-  const persistRef = useRef(persistClientDetails)
-  persistRef.current = persistClientDetails
+  const persistRef = useRef(persistAll)
+  persistRef.current = persistAll
   useEffect(() => () => persistRef.current(), [])
 
   const handlePrint = () => {
-    persistClientDetails()
+    persistAll()
     const doc = document.getElementById('formal-quote-doc')
     if (doc) {
       // A4 is 297mm ≈ 1122px at CSS 96dpi. The doc is laid out at true print
@@ -256,9 +290,9 @@ export function FormalQuotePreview({
   const totals = computeDocTotals(itemsTotal, vatMode, lessWht)
 
   // The Editables are uncontrolled (initial value only), so don't render the
-  // document until the client lookup has settled — a late prefill would never
-  // reach the DOM. The clients query is warm from the page behind this.
-  if (clientsPending) return null
+  // document until the client/product lookups have settled — a late prefill
+  // would never reach the DOM. Both queries are warm from the page behind this.
+  if (clientsPending || productsPending) return null
 
   if (!detailsRef.current) {
     detailsRef.current = {
@@ -270,6 +304,16 @@ export function FormalQuotePreview({
     savedRef.current = { ...detailsRef.current }
   }
   const details = detailsRef.current
+
+  if (!uomRef.current) {
+    uomRef.current = items.map((line) => {
+      const name = line.item.trim().toLowerCase()
+      const product = (products ?? []).find((p) => p.name.trim().toLowerCase() === name)
+      return product?.unit?.trim() || 'SET'
+    })
+    uomSavedRef.current = [...uomRef.current]
+  }
+  const uoms = uomRef.current
 
   // Portal to <body>: the app shell's overflow-y-auto <main> would otherwise
   // clip the document out of the print output entirely.
@@ -406,7 +450,7 @@ export function FormalQuotePreview({
                     <Editable block initial={row.name} className="w-full" />
                   </td>
                   <td className="border border-black px-2 py-1 text-center align-middle">
-                    <Editable initial="SET" className="min-w-8 text-center" />
+                    <Editable initial={uoms[i] ?? 'SET'} className="min-w-8 text-center" onText={(t) => { uoms[i] = t }} />
                   </td>
                   <td className="border border-black px-2 py-1 text-center align-middle tabular-nums">
                     <Editable initial={String(row.qty)} className="min-w-8 text-center" onText={(t) => patchRow(i, { qty: parseCurrency(t) })} />

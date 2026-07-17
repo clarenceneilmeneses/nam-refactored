@@ -298,6 +298,7 @@ export type Database = {
         Returns: QuotationRow[]
       }
       create_sales_batch: { Args: { p_rows: SaleInsert[] }; Returns: SaleRow[] }
+      set_product_unit: { Args: { p_item: string; p_unit: string }; Returns: undefined }
       approve_quotation: { Args: { p_id: number }; Returns: QuotationRow }
       finalize_quotation: { Args: { p_id: number; p_date: string }; Returns: SaleRow }
       remove_quotation_item: { Args: { p_id: number }; Returns: undefined }

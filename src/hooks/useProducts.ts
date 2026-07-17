@@ -41,6 +41,18 @@ export function useProductSearch(query: string) {
   })
 }
 
+/**
+ * Persists a UOM edit from the formal quote via the set_product_unit RPC
+ * (16_product_unit_rpc.sql). A plain function (not a mutation hook) because
+ * the quote preview persists as it unmounts, where a mutation observer's
+ * callbacks would be dropped. Silently a no-op server-side when the item
+ * doesn't match a product.
+ */
+export async function saveProductUnit(item: string, unit: string): Promise<void> {
+  const { error } = await supabase.rpc('set_product_unit', { p_item: item, p_unit: unit })
+  if (error) throw new Error(error.message)
+}
+
 export function useCreateProduct() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
