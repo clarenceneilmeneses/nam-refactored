@@ -13,16 +13,7 @@ import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
 import { PRODUCTS_KEY, saveProductUnit, useProducts } from '@/hooks/useProducts'
 import { saveQuoteSigner } from '@/hooks/useProfile'
 import { computeDocTotals, type VatMode } from './formalDocMath'
-import {
-  SIGNATURE_KEYS,
-  SIGNER_DEFAULTS,
-  SIGNER_KEYS,
-  fileToDataUrl,
-  itemImageKey,
-  loadCachedImage,
-  loadCachedText,
-  saveCachedImage,
-} from './quoteImages'
+import { SIGNATURE_KEYS, SIGNER_DEFAULTS, fileToDataUrl, itemImageKey, loadCachedImage, saveCachedImage } from './quoteImages'
 
 export type FormalQuoteLine = { item: string; quantity: number; nam_unit_price: number }
 
@@ -77,6 +68,10 @@ function Editable({
       contentEditable
       suppressContentEditableWarning
       className={cn('fq-editable', className)}
+      // .fq-editable is inline-block for the in-sentence spans; a block
+      // Editable must actually stack (e.g. signatory name over position) —
+      // without this, two short block Editables share one line.
+      style={block ? { display: 'block' } : undefined}
       onInput={onText ? (e) => onText((e.currentTarget as HTMLElement).textContent ?? '') : undefined}
     >
       {text}
@@ -247,14 +242,16 @@ export function FormalQuotePreview({
   }
 
   // Signatory name/position follow the ACCOUNT (users.quote_signer_*), so
-  // they travel with the login across devices. The device-cached values from
-  // the previous build serve as a one-time fallback until first saved.
+  // they travel with the login across devices. An account that never saved
+  // one signs as itself: its own display name over the legacy position. No
+  // device-local fallback — on shared PCs it leaked one user's name into
+  // everyone else's quotes.
   const signerRef = useRef<{ name: string; title: string } | null>(null)
   const signerSavedRef = useRef<{ name: string; title: string } | null>(null)
   if (!signerRef.current) {
     signerRef.current = {
-      name: profile?.quote_signer_name ?? loadCachedText(SIGNER_KEYS.name) ?? SIGNER_DEFAULTS.name,
-      title: profile?.quote_signer_title ?? loadCachedText(SIGNER_KEYS.title) ?? SIGNER_DEFAULTS.title,
+      name: profile?.quote_signer_name ?? profile?.full_name?.toUpperCase() ?? SIGNER_DEFAULTS.name,
+      title: profile?.quote_signer_title ?? SIGNER_DEFAULTS.title,
     }
     signerSavedRef.current = { ...signerRef.current }
   }
@@ -263,29 +260,18 @@ export function FormalQuotePreview({
   const persistSigner = () => {
     const s = signerRef.current
     const saved = signerSavedRef.current
-    if (!s || !profile) return
+    if (!s || !saved || !profile) return
     const name = s.name.trim()
     const title = s.title.trim()
-    const edited = !saved || name !== saved.name.trim() || title !== saved.title.trim()
-    // Unedited: still migrate a device-cached signer (previous build) onto the
-    // account once, silently — but never stamp the legacy default on an account.
-    const migrate =
-      !edited &&
-      profile.quote_signer_name === null &&
-      (loadCachedText(SIGNER_KEYS.name) !== null || loadCachedText(SIGNER_KEYS.title) !== null)
-    if (!edited && !migrate) return
+    if (name === saved.name.trim() && title === saved.title.trim()) return
     signerSavedRef.current = { name, title }
     void saveQuoteSigner(profile.id, name, title)
       .then(() => {
         refreshProfile()
-        if (edited) {
-          logAction(profile.id, 'Updated Profile', `Updated quote signatory to "${name}${title ? `, ${title}` : ''}"`)
-          toast.success('Signature name & position saved to your account')
-        }
+        logAction(profile.id, 'Updated Profile', `Updated quote signatory to "${name}${title ? `, ${title}` : ''}"`)
+        toast.success('Signature name & position saved to your account')
       })
-      .catch((e) => {
-        if (edited) toast.error(`Couldn't save signatory details: ${(e as Error).message}`)
-      })
+      .catch((e) => toast.error(`Couldn't save signatory details: ${(e as Error).message}`))
   }
 
   const persistAll = () => {

@@ -9,22 +9,12 @@
 export const SIGNATURE_KEYS = ['cache_img_sig_1', 'cache_img_sig_2'] as const
 
 /**
- * Signatory block under the e-signature: name + position. These live on the
- * user's account (users.quote_signer_*, 17_signer_profile.sql) so they follow
- * the login across devices; the keys below only read values cached by the
- * short-lived device-local build as a one-time migration fallback, before
- * falling back to the legacy hardcoded defaults.
+ * Signatory block under the e-signature. It lives on the user's account
+ * (users.quote_signer_*, 17_signer_profile.sql) so it follows the login
+ * across devices; these legacy values are the last-resort defaults for an
+ * account with no saved signer and no display name.
  */
-export const SIGNER_KEYS = { name: 'cache_sig_name_1', title: 'cache_sig_title_1' } as const
 export const SIGNER_DEFAULTS = { name: 'ALLYSON ASHLEY AGUILERA', title: 'Sales and Technical Officer' } as const
-
-export function loadCachedText(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
 
 /** Legacy key sanitisation: collapse anything non-alphanumeric to "_". */
 export function itemImageKey(itemName: string): string {
