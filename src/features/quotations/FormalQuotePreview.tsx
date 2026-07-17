@@ -150,7 +150,6 @@ export function FormalQuotePreview({
   address,
   quoteRef,
   date,
-  poNumber,
   paymentTerm,
   remarks,
   items,
@@ -406,7 +405,7 @@ export function FormalQuotePreview({
                   <strong>CONTACT NO:</strong> 0963-732-6844 / 0917-834-8811 / 0901-556-352
                 </p>
                 <p>
-                  <strong>EMAIL:</strong> nam.nswt@myyahoo.com
+                  <strong>EMAIL:</strong> sales@nambuilders.com / admin@nambuilders.com
                 </p>
               </div>
             </div>
@@ -446,14 +445,6 @@ export function FormalQuotePreview({
                 <div className="flex gap-2">
                   <span className="w-36 shrink-0 font-bold">QUOTATION DATE:</span>
                   <Editable initial={date} className="min-w-24 flex-1 font-bold" />
-                </div>
-                <div className="flex gap-2">
-                  <span className="w-36 shrink-0 font-bold">VEHICLE NO:</span>
-                  <Editable initial="" className="min-w-24 flex-1 font-bold" />
-                </div>
-                <div className="flex gap-2">
-                  <span className="w-36 shrink-0 font-bold">INQUIRY REF #:</span>
-                  <Editable initial={poNumber ?? ''} className="min-w-24 flex-1 font-bold" />
                 </div>
               </div>
             </div>

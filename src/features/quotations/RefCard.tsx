@@ -105,7 +105,6 @@ export function RefCard({ group, open, onToggle, actions }: RefCardProps) {
       {open && (
         <div className="border-t border-hairline">
           <div className="flex flex-wrap items-center gap-2 bg-page px-3 py-2">
-            {group.poNumber && <Badge variant="neutral">Inquiry #: {group.poNumber}</Badge>}
             {group.paymentTerm && <Badge variant="neutral">{group.paymentTerm}</Badge>}
             <span className="flex-1" />
             <Button variant="subtle" size="sm" onClick={() => actions.onAddItem(group)}>
