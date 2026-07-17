@@ -21,9 +21,19 @@ type Draft = {
   default_payment_term: string
   address: string
   contact_person: string
+  contact_number: string
+  email: string
 }
 
-const blank: Draft = { company_name: '', tin: '', default_payment_term: '', address: '', contact_person: '' }
+const blank: Draft = {
+  company_name: '',
+  tin: '',
+  default_payment_term: '',
+  address: '',
+  contact_person: '',
+  contact_number: '',
+  email: '',
+}
 
 /** Add / edit a client profile (legacy save_client.php modal). */
 export function ClientFormDialog({ open, onClose, client, onSaved }: ClientFormDialogProps) {
@@ -40,6 +50,8 @@ export function ClientFormDialog({ open, onClose, client, onSaved }: ClientFormD
             default_payment_term: client.default_payment_term ?? '',
             address: client.address ?? '',
             contact_person: client.contact_person ?? '',
+            contact_number: client.contact_number ?? '',
+            email: client.email ?? '',
           }
         : blank,
     )
@@ -62,6 +74,8 @@ export function ClientFormDialog({ open, onClose, client, onSaved }: ClientFormD
         default_payment_term: draft.default_payment_term.trim() || null,
         address: draft.address.trim() || null,
         contact_person: draft.contact_person.trim() || null,
+        contact_number: draft.contact_number.trim() || null,
+        email: draft.email.trim() || null,
       })
       toast.success(`Client "${saved.company_name}" saved`)
       onSaved?.(saved)
@@ -103,9 +117,19 @@ export function ClientFormDialog({ open, onClose, client, onSaved }: ClientFormD
           <Label htmlFor="cf-address">Address</Label>
           <Input id="cf-address" value={draft.address} onChange={(e) => set('address', e.target.value)} />
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="cf-contact">Contact Person</Label>
+            <Input id="cf-contact" value={draft.contact_person} onChange={(e) => set('contact_person', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cf-number">Contact Number</Label>
+            <Input id="cf-number" value={draft.contact_number} placeholder="e.g. 0917-000-0000" onChange={(e) => set('contact_number', e.target.value)} />
+          </div>
+        </div>
         <div className="space-y-1">
-          <Label htmlFor="cf-contact">Contact Person</Label>
-          <Input id="cf-contact" value={draft.contact_person} onChange={(e) => set('contact_person', e.target.value)} />
+          <Label htmlFor="cf-email">Email Address</Label>
+          <Input id="cf-email" type="email" value={draft.email} onChange={(e) => set('email', e.target.value)} />
         </div>
       </div>
       <div className="mt-4 flex justify-end gap-2">

@@ -175,6 +175,19 @@ html[data-density='compact'] main table td {
     padding: 10mm 12mm !important;
     margin: 0 !important;
   }
+  /* Auto-fit: FormalQuotePreview sets --fq-print-zoom just before printing so
+     a document that only slightly overruns A4 (e.g. one item with an image)
+     shrinks onto a single page. The width compensation keeps the zoomed doc
+     filling the full paper width. */
+  #formal-quote-doc {
+    zoom: var(--fq-print-zoom, 1);
+    width: calc(210mm / var(--fq-print-zoom, 1)) !important;
+    max-width: none !important;
+  }
+  /* An item row (image included) never splits across two pages. */
+  #formal-quote-doc tr {
+    break-inside: avoid;
+  }
   /* The report doc's on-screen sections must not split mid-block on paper. */
   #analytics-report-doc section,
   #analytics-report-doc table {

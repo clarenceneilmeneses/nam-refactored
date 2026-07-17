@@ -84,6 +84,9 @@ export type ClientRow = {
   address: string | null
   tin: string | null
   contact_person: string | null
+  /** Quote-document contact details (15_clients_contact_details.sql) — saved back from the formal quote preview. */
+  contact_number: string | null
+  email: string | null
   default_payment_term: string | null
   created_at: string
 }

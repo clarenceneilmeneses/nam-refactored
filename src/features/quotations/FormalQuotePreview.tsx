@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Printer, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { parseCurrency, round2 } from '@/lib/calculations'
+import { logAction } from '@/lib/log'
+import { useAuth } from '@/hooks/useAuth'
+import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
 import { computeDocTotals, type VatMode } from './formalDocMath'
 import { SIGNATURE_KEYS, fileToDataUrl, itemImageKey, loadCachedImage, saveCachedImage } from './quoteImages'
 
@@ -25,6 +29,9 @@ type FormalQuotePreviewProps = {
 }
 
 type DocRow = { key: string; name: string; qty: number; price: number; image: string | null }
+
+/** Doc fields persisted back to the client profile (15_clients_contact_details.sql). */
+type ClientDocDetails = { contact_person: string; contact_number: string; email: string; address: string }
 
 /** Totals rows: commas + 2 decimals (₱ prefixed where rendered). */
 function money(n: number): string {
@@ -155,6 +162,74 @@ export function FormalQuotePreview({
   )
   const [signature, setSignature] = useState<string | null>(() => loadCachedImage(SIGNATURE_KEYS[0]))
 
+  // Contact person / number / email prefill from the client profile and any
+  // edits are written back on print/close — no more retyping them per quote.
+  const queryClient = useQueryClient()
+  const { profile } = useAuth()
+  const { data: clients, isPending: clientsPending } = useClients()
+  const client = useMemo(() => {
+    const name = (company ?? '').trim().toLowerCase()
+    if (!name) return null
+    return (clients ?? []).find((c) => c.company_name.trim().toLowerCase() === name) ?? null
+  }, [clients, company])
+  // Current doc values (mutated by the Editables) and the last-persisted
+  // snapshot; refs because contentEditable edits must never trigger re-renders.
+  const detailsRef = useRef<ClientDocDetails | null>(null)
+  const savedRef = useRef<ClientDocDetails | null>(null)
+
+  const persistClientDetails = () => {
+    const d = detailsRef.current
+    const saved = savedRef.current
+    const name = (company ?? '').trim()
+    if (!d || !name) return
+    if (
+      saved &&
+      d.contact_person.trim() === saved.contact_person.trim() &&
+      d.contact_number.trim() === saved.contact_number.trim() &&
+      d.email.trim() === saved.email.trim() &&
+      d.address.trim() === saved.address.trim()
+    )
+      return
+    savedRef.current = { ...d }
+    void saveClientRecord({
+      id: client?.id,
+      company_name: name,
+      contact_person: d.contact_person.trim() || null,
+      contact_number: d.contact_number.trim() || null,
+      email: d.email.trim() || null,
+      address: d.address.trim() || null,
+    })
+      .then((row) => {
+        queryClient.invalidateQueries({ queryKey: CLIENTS_KEY })
+        logAction(profile?.id, 'Saved Client', `Saved client contact details from quote: ${row.company_name}`)
+        toast.success(`Contact details saved for ${row.company_name} — they'll auto-fill on the next quote`)
+      })
+      .catch((e) => toast.error(`Couldn't save client details: ${(e as Error).message}`))
+  }
+  // Persist on close too (Close button, Escape, navigating away) — the ref
+  // keeps the unmount cleanup pointed at the latest values.
+  const persistRef = useRef(persistClientDetails)
+  persistRef.current = persistClientDetails
+  useEffect(() => () => persistRef.current(), [])
+
+  const handlePrint = () => {
+    persistClientDetails()
+    const doc = document.getElementById('formal-quote-doc')
+    if (doc) {
+      // A4 is 297mm ≈ 1122px at CSS 96dpi. The doc is laid out at true print
+      // width (210mm) with print padding, so scrollHeight is the printed
+      // height. A doc that only slightly overruns one page (the classic
+      // one-item-with-an-image case) shrinks onto a single page via the
+      // --fq-print-zoom rule in index.css; genuinely long documents keep
+      // their natural size and paginate normally.
+      const PAGE_PX = 1122
+      const h = doc.scrollHeight
+      const zoom = h > PAGE_PX && h < PAGE_PX * 1.4 ? (PAGE_PX - 8) / h : 1
+      document.documentElement.style.setProperty('--fq-print-zoom', zoom.toFixed(4))
+    }
+    window.print()
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -180,6 +255,22 @@ export function FormalQuotePreview({
   const itemsTotal = round2(rows.reduce((sum, r) => sum + round2(r.qty * r.price), 0))
   const totals = computeDocTotals(itemsTotal, vatMode, lessWht)
 
+  // The Editables are uncontrolled (initial value only), so don't render the
+  // document until the client lookup has settled — a late prefill would never
+  // reach the DOM. The clients query is warm from the page behind this.
+  if (clientsPending) return null
+
+  if (!detailsRef.current) {
+    detailsRef.current = {
+      contact_person: client?.contact_person ?? '',
+      contact_number: client?.contact_number ?? '',
+      email: client?.email ?? '',
+      address: (address || client?.address) ?? '',
+    }
+    savedRef.current = { ...detailsRef.current }
+  }
+  const details = detailsRef.current
+
   // Portal to <body>: the app shell's overflow-y-auto <main> would otherwise
   // clip the document out of the print output entirely.
   return createPortal(
@@ -188,7 +279,7 @@ export function FormalQuotePreview({
         {/* Control strip — never printed */}
         <div className="fq-controls mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-surface p-3 shadow-lg print:hidden">
           <p className="min-w-48 flex-1 text-xs text-ink-secondary">
-            💡 <strong>Live Editing:</strong> Click any text to type. Click the dashed box to add item images!
+            💡 <strong>Live Editing:</strong> Click any text to type. Contact details are remembered per client and auto-fill the next quote.
           </p>
           <Select value={vatMode} onChange={(e) => setVatMode(e.target.value as VatMode)} className="w-44" aria-label="VAT mode">
             <option value="inclusive">VAT Inclusive (12%)</option>
@@ -199,7 +290,7 @@ export function FormalQuotePreview({
             <input type="checkbox" className="h-4 w-4 accent-[#2a78d6]" checked={lessWht} onChange={(e) => setLessWht(e.target.checked)} />
             Less 1% WHT
           </label>
-          <Button onClick={() => window.print()}>
+          <Button onClick={handlePrint}>
             <Printer className="h-4 w-4" /> Print Document
           </Button>
           <Button variant="outline" onClick={onClose}>
@@ -207,8 +298,10 @@ export function FormalQuotePreview({
           </Button>
         </div>
 
-        {/* The document */}
-        <div id="formal-quote-doc" className="bg-white p-8 text-[13px] leading-snug text-black shadow-xl">
+        {/* The document — laid out at true A4 width with print padding, so the
+            screen is an honest one-page preview and handlePrint's height
+            measurement matches the paper exactly. */}
+        <div id="formal-quote-doc" className="mx-auto w-[210mm] max-w-full bg-white px-[12mm] py-[10mm] text-[13px] leading-snug text-black shadow-xl">
           {/* Letterhead */}
           <div className="flex items-start justify-between gap-4 border-b-[4px] border-[#003366] pb-3">
             <div className="flex items-start gap-3">
@@ -246,16 +339,16 @@ export function FormalQuotePreview({
                   <Editable initial={company ?? ''} className="min-w-40" />
                 </DetailRow>
                 <DetailRow label="COMPANY ADDRESS:">
-                  <Editable initial={address ?? ''} className="min-w-40" />
+                  <Editable initial={details.address} className="min-w-40" onText={(t) => { details.address = t }} />
                 </DetailRow>
                 <DetailRow label="CONTACT PERSON:">
-                  <Editable initial="" className="min-w-40" />
+                  <Editable initial={details.contact_person} className="min-w-40" onText={(t) => { details.contact_person = t }} />
                 </DetailRow>
                 <DetailRow label="CONTACT NUMBER:">
-                  <Editable initial="" className="min-w-40" />
+                  <Editable initial={details.contact_number} className="min-w-40" onText={(t) => { details.contact_number = t }} />
                 </DetailRow>
                 <DetailRow label="EMAIL ADDRESS:">
-                  <Editable initial="" className="min-w-40" />
+                  <Editable initial={details.email} className="min-w-40" onText={(t) => { details.email = t }} />
                 </DetailRow>
                 <div className="flex gap-2 pt-2">
                   <span className="w-36 shrink-0 font-bold">TERMS:</span>

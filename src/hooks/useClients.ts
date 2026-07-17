@@ -16,6 +16,33 @@ export function useClients() {
 }
 
 /**
+ * Core upsert-by-company-name (mirrors legacy save_client.php), shared by
+ * useSaveClient and the formal quote preview — the preview persists contact
+ * details as it closes, after which a mutation observer's callbacks would be
+ * dropped, so it calls this directly and invalidates/logs itself.
+ */
+export async function saveClientRecord({ id, ...client }: ClientInsert & { id?: number }): Promise<ClientRow> {
+  let targetId = id
+  if (!targetId) {
+    const { data: existing, error: findError } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('company_name', client.company_name)
+      .maybeSingle()
+    if (findError) throw new Error(findError.message)
+    targetId = existing?.id
+  }
+  if (targetId) {
+    const { data, error } = await supabase.from('clients').update(client).eq('id', targetId).select().single()
+    if (error) throw new Error(error.message)
+    return data
+  }
+  const { data, error } = await supabase.from('clients').insert(client).select().single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+/**
  * Upserts client master data by company name (mirrors legacy
  * save_client.php). Pass id to edit a specific profile (the client
  * manager's ✎ Edit action, where the name itself may change).
@@ -24,26 +51,7 @@ export function useSaveClient() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
   return useMutation({
-    mutationFn: async ({ id, ...client }: ClientInsert & { id?: number }) => {
-      let targetId = id
-      if (!targetId) {
-        const { data: existing, error: findError } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('company_name', client.company_name)
-          .maybeSingle()
-        if (findError) throw new Error(findError.message)
-        targetId = existing?.id
-      }
-      if (targetId) {
-        const { data, error } = await supabase.from('clients').update(client).eq('id', targetId).select().single()
-        if (error) throw new Error(error.message)
-        return data
-      }
-      const { data, error } = await supabase.from('clients').insert(client).select().single()
-      if (error) throw new Error(error.message)
-      return data
-    },
+    mutationFn: saveClientRecord,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: CLIENTS_KEY })
       logAction(profile?.id, 'Saved Client', `Saved client: ${data.company_name}`)
