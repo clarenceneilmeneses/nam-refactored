@@ -11,6 +11,20 @@ export function useAvatarUrl(): string | null {
   return profile?.avatar_url ?? null
 }
 
+/**
+ * Persists the formal quote's signatory name/position to the user's own
+ * account (17_signer_profile.sql; write allowed by the "users self update"
+ * policy). A plain function — the quote preview saves as it unmounts, where
+ * a mutation observer's callbacks would be dropped.
+ */
+export async function saveQuoteSigner(userId: number, name: string, title: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ quote_signer_name: name || null, quote_signer_title: title || null })
+    .eq('id', userId)
+  if (error) throw new Error(error.message)
+}
+
 /** Self-service display-name change (users row). */
 export function useUpdateProfileName() {
   const { profile, refreshProfile } = useAuth()

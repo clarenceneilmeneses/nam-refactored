@@ -9,10 +9,11 @@
 export const SIGNATURE_KEYS = ['cache_img_sig_1', 'cache_img_sig_2'] as const
 
 /**
- * Signatory block under the e-signature: name + position. Device-local like
- * the signature image itself (it's the same person's), so each user types
- * their own once and it sticks. The legacy hardcoded values remain the
- * defaults until first edited.
+ * Signatory block under the e-signature: name + position. These live on the
+ * user's account (users.quote_signer_*, 17_signer_profile.sql) so they follow
+ * the login across devices; the keys below only read values cached by the
+ * short-lived device-local build as a one-time migration fallback, before
+ * falling back to the legacy hardcoded defaults.
  */
 export const SIGNER_KEYS = { name: 'cache_sig_name_1', title: 'cache_sig_title_1' } as const
 export const SIGNER_DEFAULTS = { name: 'ALLYSON ASHLEY AGUILERA', title: 'Sales and Technical Officer' } as const
@@ -22,14 +23,6 @@ export function loadCachedText(key: string): string | null {
     return localStorage.getItem(key)
   } catch {
     return null
-  }
-}
-
-export function saveCachedText(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // localStorage unavailable/full — the doc still prints, it just won't recall.
   }
 }
 

@@ -11,6 +11,7 @@ import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
 import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
 import { PRODUCTS_KEY, saveProductUnit, useProducts } from '@/hooks/useProducts'
+import { saveQuoteSigner } from '@/hooks/useProfile'
 import { computeDocTotals, type VatMode } from './formalDocMath'
 import {
   SIGNATURE_KEYS,
@@ -21,7 +22,6 @@ import {
   loadCachedImage,
   loadCachedText,
   saveCachedImage,
-  saveCachedText,
 } from './quoteImages'
 
 export type FormalQuoteLine = { item: string; quantity: number; nam_unit_price: number }
@@ -176,7 +176,7 @@ export function FormalQuotePreview({
   // Contact person / number / email prefill from the client profile and any
   // edits are written back on print/close — no more retyping them per quote.
   const queryClient = useQueryClient()
-  const { profile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
   const { data: clients, isPending: clientsPending } = useClients()
   const client = useMemo(() => {
     const name = (company ?? '').trim().toLowerCase()
@@ -246,22 +246,46 @@ export function FormalQuotePreview({
       .catch((e) => toast.error(`Couldn't save UOM: ${(e as Error).message}`))
   }
 
-  // Signatory name/position live next to the e-sign image: device-local,
-  // recalled on every future quote once edited (blank stays blank).
+  // Signatory name/position follow the ACCOUNT (users.quote_signer_*), so
+  // they travel with the login across devices. The device-cached values from
+  // the previous build serve as a one-time fallback until first saved.
   const signerRef = useRef<{ name: string; title: string } | null>(null)
+  const signerSavedRef = useRef<{ name: string; title: string } | null>(null)
   if (!signerRef.current) {
     signerRef.current = {
-      name: loadCachedText(SIGNER_KEYS.name) ?? SIGNER_DEFAULTS.name,
-      title: loadCachedText(SIGNER_KEYS.title) ?? SIGNER_DEFAULTS.title,
+      name: profile?.quote_signer_name ?? loadCachedText(SIGNER_KEYS.name) ?? SIGNER_DEFAULTS.name,
+      title: profile?.quote_signer_title ?? loadCachedText(SIGNER_KEYS.title) ?? SIGNER_DEFAULTS.title,
     }
+    signerSavedRef.current = { ...signerRef.current }
   }
   const signer = signerRef.current
 
   const persistSigner = () => {
     const s = signerRef.current
-    if (!s) return
-    saveCachedText(SIGNER_KEYS.name, s.name.trim())
-    saveCachedText(SIGNER_KEYS.title, s.title.trim())
+    const saved = signerSavedRef.current
+    if (!s || !profile) return
+    const name = s.name.trim()
+    const title = s.title.trim()
+    const edited = !saved || name !== saved.name.trim() || title !== saved.title.trim()
+    // Unedited: still migrate a device-cached signer (previous build) onto the
+    // account once, silently — but never stamp the legacy default on an account.
+    const migrate =
+      !edited &&
+      profile.quote_signer_name === null &&
+      (loadCachedText(SIGNER_KEYS.name) !== null || loadCachedText(SIGNER_KEYS.title) !== null)
+    if (!edited && !migrate) return
+    signerSavedRef.current = { name, title }
+    void saveQuoteSigner(profile.id, name, title)
+      .then(() => {
+        refreshProfile()
+        if (edited) {
+          logAction(profile.id, 'Updated Profile', `Updated quote signatory to "${name}${title ? `, ${title}` : ''}"`)
+          toast.success('Signature name & position saved to your account')
+        }
+      })
+      .catch((e) => {
+        if (edited) toast.error(`Couldn't save signatory details: ${(e as Error).message}`)
+      })
   }
 
   const persistAll = () => {

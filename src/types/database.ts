@@ -114,6 +114,9 @@ export type UserRow = {
   role_id: number | null
   auth_id: string | null
   avatar_url: string | null
+  /** Formal quote signatory block (17_signer_profile.sql) — follows the account; NULL = never set. */
+  quote_signer_name: string | null
+  quote_signer_title: string | null
   /** Random id of the one device allowed to stay signed in (09_single_session.sql). */
   current_session_id: string | null
   created_at: string
