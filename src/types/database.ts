@@ -90,6 +90,14 @@ export type ClientRow = {
 export type ClientInsert = Partial<Omit<ClientRow, 'id' | 'created_at'>> & { company_name: string }
 export type ClientUpdate = Partial<Omit<ClientRow, 'id' | 'created_at'>>
 
+/** Category dropdown entries (14_categories.sql) — legacy fixed list seeded, extensible from the Products tab. */
+export type CategoryRow = {
+  id: number
+  name: string
+  created_at: string
+}
+export type CategoryInsert = { name: string }
+
 export type CompanyAssignmentRow = {
   id: number
   company_name: string | null
@@ -193,6 +201,7 @@ export type Database = {
       quotations: { Row: QuotationRow; Insert: QuotationInsert; Update: QuotationUpdate; Relationships: [] }
       products: { Row: ProductRow; Insert: ProductInsert; Update: ProductUpdate; Relationships: [] }
       clients: { Row: ClientRow; Insert: ClientInsert; Update: ClientUpdate; Relationships: [] }
+      categories: { Row: CategoryRow; Insert: CategoryInsert; Update: Partial<CategoryInsert>; Relationships: [] }
       company_assignments: {
         Row: CompanyAssignmentRow
         Insert: Partial<Omit<CompanyAssignmentRow, 'id'>>
@@ -285,6 +294,7 @@ export type Database = {
         }
         Returns: QuotationRow[]
       }
+      create_sales_batch: { Args: { p_rows: SaleInsert[] }; Returns: SaleRow[] }
       approve_quotation: { Args: { p_id: number }; Returns: QuotationRow }
       finalize_quotation: { Args: { p_id: number; p_date: string }; Returns: SaleRow }
       remove_quotation_item: { Args: { p_id: number }; Returns: undefined }

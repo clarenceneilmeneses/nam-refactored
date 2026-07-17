@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useCreateProduct, useUpdateProduct } from '@/hooks/useProducts'
+import { useCategories, useCreateCategory } from '@/hooks/useCategories'
 import { computeProductMargin } from '@/lib/calculations'
-import { CATEGORIES } from '@/lib/categories'
 import { PriceCalculator, type CalcValues } from '@/features/quotations/PriceCalculator'
 import type { ProductRow } from '@/types/database'
 
@@ -67,10 +67,37 @@ export function ProductFormDialog({
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const create = useCreateProduct()
   const update = useUpdateProduct()
+  const { names: categories } = useCategories()
+  const createCategory = useCreateCategory()
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [newCategory, setNewCategory] = useState('')
 
   useEffect(() => {
-    if (open) setDraft(product ? toDraft(product) : emptyDraft())
+    if (open) {
+      setDraft(product ? toDraft(product) : emptyDraft())
+      setAddingCategory(false)
+      setNewCategory('')
+    }
   }, [open, product])
+
+  // A product may carry a category that predates the categories table
+  // (e.g. "Uncategorized" drafts) — keep it selectable instead of blanking it.
+  const categoryOptions =
+    draft.category_code && !categories.includes(draft.category_code)
+      ? [draft.category_code, ...categories]
+      : categories
+
+  async function saveNewCategory() {
+    try {
+      const saved = await createCategory.mutateAsync(newCategory)
+      set('category_code', saved.name)
+      setAddingCategory(false)
+      setNewCategory('')
+      toast.success(`Category "${saved.name}" added`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
@@ -133,13 +160,48 @@ export function ProductFormDialog({
             <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Category</Label>
-            <Select value={draft.category_code} onChange={(e) => set('category_code', e.target.value)}>
-              <option value="">— Select —</option>
-              {CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label>Category</Label>
+              {!addingCategory && (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-accent hover:underline cursor-pointer"
+                  onClick={() => setAddingCategory(true)}
+                >
+                  + New
+                </button>
+              )}
+            </div>
+            {addingCategory ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  autoFocus
+                  value={newCategory}
+                  placeholder="New category name"
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void saveNewCategory()
+                    }
+                    if (e.key === 'Escape') setAddingCategory(false)
+                  }}
+                />
+                <Button size="sm" onClick={saveNewCategory} disabled={createCategory.isPending || !newCategory.trim()}>
+                  {createCategory.isPending ? '…' : 'Add'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setAddingCategory(false)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Select value={draft.category_code} onChange={(e) => set('category_code', e.target.value)}>
+                <option value="">— Select —</option>
+                {categoryOptions.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </Select>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Unit</Label>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAll, supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
+import { PRODUCTS_KEY } from '@/hooks/useProducts'
 import type { DeliverItemInput, DeliverItemResult, SaleInsert, SaleRow, SaleUpdate } from '@/types/database'
 
 export const SALES_KEY = ['sales'] as const
@@ -28,12 +29,16 @@ export function useCreateSales() {
   const { profile } = useAuth()
   return useMutation({
     mutationFn: async ({ rows }: CreateSalesVars) => {
-      const { data, error } = await supabase.from('sales').insert(rows).select()
+      // create_sales_batch (13_sales_stock.sql) inserts the rows AND deducts
+      // products.current_stock in one transaction — a plain insert here would
+      // leave inventory untouched.
+      const { data, error } = await supabase.rpc('create_sales_batch', { p_rows: rows })
       if (error) throw new Error(error.message)
       return data
     },
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: SALES_KEY })
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
       if (vars.log) {
         logAction(profile?.id, vars.log.action, vars.log.description)
       } else {

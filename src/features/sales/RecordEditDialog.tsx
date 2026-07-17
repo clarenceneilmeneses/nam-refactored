@@ -10,7 +10,7 @@ import { useUpdateSale } from '@/hooks/useSales'
 import { useAuth } from '@/hooks/useAuth'
 import { canEnterSi } from '@/lib/privileges'
 import { round2 } from '@/lib/calculations'
-import { CATEGORIES } from '@/lib/categories'
+import { useCategories } from '@/hooks/useCategories'
 import { formatPeso, formatPercent } from '@/lib/format'
 import type { SaleRow } from '@/types/database'
 
@@ -81,6 +81,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onClose: () => void }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const updateSale = useUpdateSale()
+  const { names: categories } = useCategories()
   const { privileges } = useAuth()
   // SI # entry is the assigned encoder's alone (Roles tab → Special privileges).
   const siEditable = canEnterSi(privileges)
@@ -106,11 +107,9 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
   const income = round2(totalSales - totalCost)
   const marginPct = totalSales > 0 ? round2((income / totalSales) * 100) : 0
 
-  // Legacy rows can carry categories outside the fixed list — keep them selectable.
+  // Legacy rows can carry categories outside the list — keep them selectable.
   const categoryOptions: string[] =
-    draft.category && !CATEGORIES.includes(draft.category as (typeof CATEGORIES)[number])
-      ? [draft.category, ...CATEGORIES]
-      : [...CATEGORIES]
+    draft.category && !categories.includes(draft.category) ? [draft.category, ...categories] : categories
 
   async function onSave() {
     if (!draft || !sale) return

@@ -16,7 +16,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { CATEGORIES } from '@/lib/categories'
+import { useCategories } from '@/hooks/useCategories'
 import { computeDueDate, computeSaleLine, round2 } from '@/lib/calculations'
 import { canEnterSi } from '@/lib/privileges'
 import { cn } from '@/lib/utils'
@@ -111,6 +111,7 @@ export function SalesEntryPage() {
   const { data: clients } = useClients()
   const { data: sales } = useSales()
   const { data: quotations } = useQuotations()
+  const { names: categories } = useCategories()
   const createSales = useCreateSales()
   const createQuotationBatch = useCreateQuotationBatch()
 
@@ -134,6 +135,13 @@ export function SalesEntryPage() {
     () => (productMatches ?? []).map((p) => ({ label: p.name, data: p })),
     [productMatches],
   )
+  // Live inventory readout: once the typed item is an exact product name
+  // (typically after picking a suggestion), surface its current stock.
+  const matchedProduct = useMemo(() => {
+    const q = item.item.trim().toLowerCase()
+    if (!q) return null
+    return (productMatches ?? []).find((p) => p.name.trim().toLowerCase() === q) ?? null
+  }, [productMatches, item.item])
 
   // Company suggestions: clients master first, then companies already in sales.
   const companyOptions = useMemo(() => {
@@ -483,16 +491,39 @@ export function SalesEntryPage() {
                     renderOption={({ data }) => (
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate">{data.name}</span>
-                        <span className="shrink-0 text-xs text-ink-muted tabular-nums">{formatPeso(data.nam_price)}</span>
+                        <span className="shrink-0 text-xs text-ink-muted tabular-nums">
+                          Stock: {data.current_stock ?? 0} · {formatPeso(data.nam_price)}
+                        </span>
                       </span>
                     )}
                   />
+                  {matchedProduct && (
+                    <p className="flex items-center justify-between text-[11px] tabular-nums">
+                      <span className="text-ink-muted">
+                        In stock:{' '}
+                        <span
+                          className={cn(
+                            'font-medium',
+                            (matchedProduct.current_stock ?? 0) <= (matchedProduct.reorder_level ?? 0)
+                              ? 'text-critical'
+                              : 'text-ink-secondary',
+                          )}
+                        >
+                          {matchedProduct.current_stock ?? 0}
+                        </span>
+                        {matchedProduct.unit ? ` ${matchedProduct.unit}` : ''}
+                      </span>
+                      {quantity > (matchedProduct.current_stock ?? 0) && (
+                        <span className="font-medium text-critical">Quantity exceeds current stock</span>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="se-category">Category *</Label>
                   <Select id="se-category" value={item.category} onChange={(e) => setI('category', e.target.value)}>
                     <option value="">Select category…</option>
-                    {CATEGORIES.map((c) => (
+                    {categories.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </Select>
