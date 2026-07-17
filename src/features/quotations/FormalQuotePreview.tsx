@@ -12,7 +12,17 @@ import { useAuth } from '@/hooks/useAuth'
 import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
 import { PRODUCTS_KEY, saveProductUnit, useProducts } from '@/hooks/useProducts'
 import { computeDocTotals, type VatMode } from './formalDocMath'
-import { SIGNATURE_KEYS, fileToDataUrl, itemImageKey, loadCachedImage, saveCachedImage } from './quoteImages'
+import {
+  SIGNATURE_KEYS,
+  SIGNER_DEFAULTS,
+  SIGNER_KEYS,
+  fileToDataUrl,
+  itemImageKey,
+  loadCachedImage,
+  loadCachedText,
+  saveCachedImage,
+  saveCachedText,
+} from './quoteImages'
 
 export type FormalQuoteLine = { item: string; quantity: number; nam_unit_price: number }
 
@@ -236,9 +246,28 @@ export function FormalQuotePreview({
       .catch((e) => toast.error(`Couldn't save UOM: ${(e as Error).message}`))
   }
 
+  // Signatory name/position live next to the e-sign image: device-local,
+  // recalled on every future quote once edited (blank stays blank).
+  const signerRef = useRef<{ name: string; title: string } | null>(null)
+  if (!signerRef.current) {
+    signerRef.current = {
+      name: loadCachedText(SIGNER_KEYS.name) ?? SIGNER_DEFAULTS.name,
+      title: loadCachedText(SIGNER_KEYS.title) ?? SIGNER_DEFAULTS.title,
+    }
+  }
+  const signer = signerRef.current
+
+  const persistSigner = () => {
+    const s = signerRef.current
+    if (!s) return
+    saveCachedText(SIGNER_KEYS.name, s.name.trim())
+    saveCachedText(SIGNER_KEYS.title, s.title.trim())
+  }
+
   const persistAll = () => {
     persistClientDetails()
     persistUomEdits()
+    persistSigner()
   }
   // Persist on close too (Close button, Escape, navigating away) — the ref
   // keeps the unmount cleanup pointed at the latest values.
@@ -587,8 +616,8 @@ export function FormalQuotePreview({
                 className="mt-1 h-[60px] w-[160px]"
                 emptyLabel="Add E-Sign"
               />
-              <Editable block initial="ALLYSON ASHLEY AGUILERA" className="text-[13px] font-bold" />
-              <Editable block initial="Sales and Technical Officer" className="text-[10px]" />
+              <Editable block initial={signer.name} className="text-[13px] font-bold" onText={(t) => { signer.name = t }} />
+              <Editable block initial={signer.title} className="text-[10px]" onText={(t) => { signer.title = t }} />
               <p className="mt-6 font-bold">Conforme:</p>
               <p className="mt-14 text-[10px]">Signature over printed name</p>
             </div>

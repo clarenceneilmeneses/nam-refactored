@@ -8,6 +8,31 @@
 
 export const SIGNATURE_KEYS = ['cache_img_sig_1', 'cache_img_sig_2'] as const
 
+/**
+ * Signatory block under the e-signature: name + position. Device-local like
+ * the signature image itself (it's the same person's), so each user types
+ * their own once and it sticks. The legacy hardcoded values remain the
+ * defaults until first edited.
+ */
+export const SIGNER_KEYS = { name: 'cache_sig_name_1', title: 'cache_sig_title_1' } as const
+export const SIGNER_DEFAULTS = { name: 'ALLYSON ASHLEY AGUILERA', title: 'Sales and Technical Officer' } as const
+
+export function loadCachedText(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function saveCachedText(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // localStorage unavailable/full — the doc still prints, it just won't recall.
+  }
+}
+
 /** Legacy key sanitisation: collapse anything non-alphanumeric to "_". */
 export function itemImageKey(itemName: string): string {
   return `cache_img_${itemName.trim().replace(/[^a-zA-Z0-9]+/g, '_')}`
