@@ -199,7 +199,7 @@ type TypeToConfirmProps = {
   busy: boolean
 }
 
-function TypeToConfirmDialog({ open, onClose, onConfirm, title, description, phrase, confirmLabel, busy }: TypeToConfirmProps) {
+export function TypeToConfirmDialog({ open, onClose, onConfirm, title, description, phrase, confirmLabel, busy }: TypeToConfirmProps) {
   const [text, setText] = useState('')
   useEffect(() => {
     if (open) setText('')
@@ -229,7 +229,7 @@ function TypeToConfirmDialog({ open, onClose, onConfirm, title, description, phr
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={!matches || busy}>
-            {busy ? 'Deleting…' : confirmLabel}
+            {busy ? 'Working…' : confirmLabel}
           </Button>
         </div>
       </div>

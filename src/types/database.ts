@@ -200,6 +200,13 @@ export const PRIVILEGES: ReadonlyArray<{ name: PrivilegeName; label: string; des
   { name: 'mark_paid', label: 'Mark Paid', description: 'Change a record’s Paid status, once its SI # is reviewed' },
 ]
 
+/** Returned by legacy_restore_commit (18_legacy_restore.sql). */
+export type LegacyRestoreSummary = {
+  tables: Record<string, number>
+  si_review_preserved: number
+  si_paid_grandfathered: number
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -317,6 +324,12 @@ export type Database = {
         Returns: UserRow
       }
       admin_delete_user: { Args: { p_id: number }; Returns: undefined }
+      legacy_restore_begin: { Args: Record<string, never>; Returns: undefined }
+      legacy_restore_stage: {
+        Args: { p_table: string; p_columns: string[]; p_rows: Record<string, string | number | boolean | null>[] }
+        Returns: number
+      }
+      legacy_restore_commit: { Args: { p_tables: string[] }; Returns: LegacyRestoreSummary }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

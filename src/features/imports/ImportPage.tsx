@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import Papa from 'papaparse'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, Database, FileSpreadsheet, Info, Tags, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Database, DatabaseBackup, FileSpreadsheet, Info, Tags, Upload } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Select } from '@/components/ui/select'
 import { DataManagementTab } from './DataManagementTab'
+import { LegacyRestoreTab } from './LegacyRestoreTab'
 import {
   buildPriceUpdates,
   buildSalesRows,
@@ -27,7 +28,7 @@ import {
   type RowIssue,
 } from './importLogic'
 
-type Tab = 'sales' | 'prices' | 'data'
+type Tab = 'sales' | 'prices' | 'legacy' | 'data'
 
 const PREVIEW_ROWS = 20
 
@@ -44,6 +45,7 @@ export function ImportPage() {
           [
             { id: 'sales', label: 'Import Sales', icon: Upload },
             { id: 'prices', label: 'Import Prices', icon: Tags },
+            { id: 'legacy', label: 'Legacy Restore', icon: DatabaseBackup },
             { id: 'data', label: 'Data Management', icon: Database },
           ] as const
         ).map((t) => (
@@ -66,6 +68,7 @@ export function ImportPage() {
       </div>
       {tab === 'sales' && <CsvImportTab key="sales" kind="sales" />}
       {tab === 'prices' && <CsvImportTab key="prices" kind="prices" />}
+      {tab === 'legacy' && <LegacyRestoreTab />}
       {tab === 'data' && <DataManagementTab />}
     </div>
   )

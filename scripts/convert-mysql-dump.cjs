@@ -1,5 +1,9 @@
 // Converts the legacy MySQL (phpMyAdmin) dump to Postgres SQL for Supabase.
 // Data tables only — users/roles/permissions/role_permissions are kept as-is.
+// NOTE: the normal refresh path is now the in-app Import → Legacy Restore tab
+// (src/features/imports/legacyDump.ts + 18_legacy_restore.sql), which applies
+// the same conversion rules. Keep this script as a CLI fallback; if a rule
+// changes here, port it to legacyDump.ts too.
 const fs = require('fs')
 
 // Usage: node scripts/convert-mysql-dump.cjs [path-to-phpmyadmin-dump.sql] [out.sql]
