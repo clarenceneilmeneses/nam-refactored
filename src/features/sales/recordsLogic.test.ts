@@ -99,16 +99,24 @@ describe('computeKpis', () => {
   it('splits collected / outstanding / overdue and counts pending deliveries', () => {
     const rows = [
       sale({ payment_status: 'Paid', total_nam_amount: 100, date_delivered: '2026-07-01' }),
-      sale({ payment_status: 'Pending', total_nam_amount: 50 }), // no due date → not overdue
-      sale({ payment_status: 'Pending', total_nam_amount: 30, due_date: '2026-06-01' }), // overdue
+      sale({ payment_status: 'Pending', total_nam_amount: 50 }), // undelivered → NOT outstanding (legacy rule)
+      sale({ payment_status: 'Pending', total_nam_amount: 30, due_date: '2026-06-01', date_delivered: '2026-06-01' }), // overdue
       sale({ payment_status: 'Pending', total_nam_amount: 20, due_date: '2026-08-01', date_delivered: '2026-07-01' }),
     ]
     expect(computeKpis(rows, TODAY)).toEqual({
       collected: 100,
-      outstanding: 100,
+      outstanding: 50,
       overdue: 30,
-      pendingDelivery: 2,
+      pendingDelivery: 1,
     })
+  })
+
+  it('unpaid rows are only outstanding once delivered', () => {
+    const rows = [
+      sale({ payment_status: 'Pending', total_nam_amount: 40 }),
+      sale({ payment_status: 'Pending', total_nam_amount: 25, date_delivered: '2026-07-01' }),
+    ]
+    expect(computeKpis(rows, TODAY).outstanding).toBe(25)
   })
 
   it('a due date equal to today is not overdue', () => {

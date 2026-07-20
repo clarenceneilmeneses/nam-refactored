@@ -4,7 +4,7 @@ Legacy source: records.php + get_records.php + update_record.php + delete_record
 
 ## KPI cards (top, computed from the CURRENTLY FILTERED rows, live)
 
-Collected (Σ total_nam_amount where Paid), Outstanding (Σ where not Paid), Overdue Collections in red (Σ where not Paid AND due_date < today AND due_date not null), Pending Delivery (count where date_delivered null).
+Collected (Σ total_nam_amount where Paid), Outstanding (Σ where not Paid AND date_delivered not null — undelivered orders are NOT receivables yet; verified against live records.php 2026-07-20), Overdue Collections in red (Σ where not Paid AND due_date < today AND due_date not null), Pending Delivery (count where date_delivered null).
 
 ## Filter bar (all combine, AND logic; Clear Filters button resets)
 

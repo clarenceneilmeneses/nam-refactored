@@ -77,7 +77,11 @@ export function computeKpis(rows: SaleRow[], todayISO: string): RecordKpis {
     if (r.payment_status === 'Paid') {
       collected += amount
     } else {
-      outstanding += amount
+      // Legacy parity (verified against records.php output, 2026-07-20): only
+      // DELIVERED unpaid rows are outstanding — an undelivered order isn't a
+      // receivable yet. Overdue needs no delivery check because due_date is
+      // only ever stamped at delivery.
+      if (r.date_delivered) outstanding += amount
       if (r.due_date && r.due_date < todayISO) overdue += amount
     }
     if (!r.date_delivered) pendingDelivery += 1
