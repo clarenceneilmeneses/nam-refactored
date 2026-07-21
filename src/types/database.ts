@@ -74,6 +74,8 @@ export type ProductRow = {
   current_stock: number | null
   reorder_level: number | null
   is_draft: boolean | null
+  /** Permanent inventory code (19_item_codes.sql), e.g. "OS-0001" — NULL until item codes are activated. */
+  item_code: string | null
 }
 export type ProductInsert = Partial<Omit<ProductRow, 'id'>> & { name: string }
 export type ProductUpdate = Partial<Omit<ProductRow, 'id'>>
@@ -97,9 +99,18 @@ export type ClientUpdate = Partial<Omit<ClientRow, 'id' | 'created_at'>>
 export type CategoryRow = {
   id: number
   name: string
+  /** Item-code prefix (19_item_codes.sql), derived from the name at activation — e.g. "OS" for OFFICE SUPPLIES. */
+  code_prefix: string | null
   created_at: string
 }
 export type CategoryInsert = { name: string }
+
+/** App-wide switches shared by all devices (19_item_codes.sql) — written only through RPCs. */
+export type AppSettingRow = {
+  key: string
+  value: unknown
+  updated_at: string
+}
 
 export type CompanyAssignmentRow = {
   id: number
@@ -215,6 +226,7 @@ export type Database = {
       products: { Row: ProductRow; Insert: ProductInsert; Update: ProductUpdate; Relationships: [] }
       clients: { Row: ClientRow; Insert: ClientInsert; Update: ClientUpdate; Relationships: [] }
       categories: { Row: CategoryRow; Insert: CategoryInsert; Update: Partial<CategoryInsert>; Relationships: [] }
+      app_settings: { Row: AppSettingRow; Insert: AppSettingRow; Update: Partial<AppSettingRow>; Relationships: [] }
       company_assignments: {
         Row: CompanyAssignmentRow
         Insert: Partial<Omit<CompanyAssignmentRow, 'id'>>
@@ -330,6 +342,8 @@ export type Database = {
         Returns: number
       }
       legacy_restore_commit: { Args: { p_tables: string[] }; Returns: LegacyRestoreSummary }
+      activate_item_codes: { Args: Record<string, never>; Returns: number }
+      item_codes_enabled: { Args: Record<string, never>; Returns: boolean }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

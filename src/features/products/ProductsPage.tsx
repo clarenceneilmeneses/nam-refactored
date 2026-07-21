@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createColumnHelper, type ColumnDef, type RowSelectionState } from '@tanstack/react-table'
-import { AlertTriangle, GitMerge, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Barcode, GitMerge, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDeleteProduct, useProducts, PRODUCTS_KEY } from '@/hooks/useProducts'
+import {
+  useActivateItemCodes,
+  useDeleteProduct,
+  useItemCodesEnabled,
+  useProducts,
+  PRODUCTS_KEY,
+} from '@/hooks/useProducts'
 import { useRealtimeInvalidate } from '@/hooks/useRealtime'
 import { DataTable } from '@/components/shared/DataTable'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
@@ -72,6 +78,8 @@ export function ProductsPage() {
   const { data: products, isLoading, error } = useProducts()
   useRealtimeInvalidate('products', PRODUCTS_KEY)
   const deleteProduct = useDeleteProduct()
+  const { enabled: codesOn } = useItemCodesEnabled()
+  const activateCodes = useActivateItemCodes()
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
@@ -81,6 +89,14 @@ export function ProductsPage() {
   const [editing, setEditing] = useState<ProductRow | null>(null)
   const [mergeOpen, setMergeOpen] = useState(false)
   const [deleting, setDeleting] = useState<ProductRow | null>(null)
+  const [codesOpen, setCodesOpen] = useState(false)
+
+  // Products without a code while the feature is on — only ever non-zero
+  // right after a Legacy Restore reloaded the catalog.
+  const uncoded = useMemo(
+    () => (codesOn ? (products ?? []).filter((p) => !p.item_code).length : 0),
+    [codesOn, products],
+  )
 
   const categories = useMemo(
     () => [...new Set((products ?? []).map((p) => p.category_code).filter((c): c is string => !!c))].sort(),
@@ -96,7 +112,7 @@ export function ProductsPage() {
         (view !== 'out' || (p.current_stock ?? 0) === 0) &&
         (view !== 'draft' || !!p.is_draft) &&
         (!q ||
-          [p.name, p.category_code, p.unit, p.supplier, p.margin].some((f) =>
+          [p.name, p.item_code, p.category_code, p.unit, p.supplier, p.margin].some((f) =>
             (f ?? '').toLowerCase().includes(q),
           )),
     )
@@ -147,6 +163,19 @@ export function ProductsPage() {
           ),
           meta: { thClassName: 'w-8', tdClassName: 'w-8' },
         }),
+        ...(codesOn
+          ? [
+              col.accessor('item_code', {
+                header: 'Code',
+                cell: (c) =>
+                  c.getValue() ? (
+                    <span className="font-mono text-xs whitespace-nowrap">{c.getValue()}</span>
+                  ) : (
+                    '—'
+                  ),
+              }),
+            ]
+          : []),
         col.accessor('name', {
           header: 'Product',
           cell: (c) => (
@@ -197,7 +226,7 @@ export function ProductsPage() {
           ),
         }),
       ] as ColumnDef<ProductRow, unknown>[],
-    [],
+    [codesOn],
   )
 
   if (error) return <p className="text-sm text-critical">Couldn’t load products: {(error as Error).message}</p>
@@ -209,6 +238,12 @@ export function ProductsPage() {
         subtitle={`${(products ?? []).length.toLocaleString()} products in catalog`}
         actions={
           <>
+            {(!codesOn || uncoded > 0) && !isLoading && (
+              <Button variant="outline" size="sm" onClick={() => setCodesOpen(true)}>
+                <Barcode className="h-3.5 w-3.5" />
+                {codesOn ? `Code ${uncoded.toLocaleString()} uncoded` : 'Activate item codes'}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -291,6 +326,29 @@ export function ProductsPage() {
         selected={selectedProducts}
         onClose={() => setMergeOpen(false)}
         onMerged={() => setRowSelection({})}
+      />
+      <ConfirmDialog
+        open={codesOpen}
+        onClose={() => setCodesOpen(false)}
+        title={codesOn ? 'Assign missing item codes?' : 'Activate item codes?'}
+        description={
+          codesOn
+            ? `${uncoded.toLocaleString()} product(s) have no item code (this happens after a legacy restore). They'll be coded using each category's existing prefix.`
+            : 'Every product in the catalog gets a permanent code prefixed by its category — e.g. OS-0001 for OFFICE SUPPLIES, GEN-0001 for uncategorized. New products are coded automatically from then on. This is a one-time transition for the whole team and can\'t be switched off.'
+        }
+        confirmLabel={codesOn ? 'Assign codes' : 'Activate'}
+        busy={activateCodes.isPending}
+        onConfirm={async () => {
+          try {
+            const n = await activateCodes.mutateAsync()
+            toast.success(
+              n > 0 ? `Item codes assigned to ${n.toLocaleString()} product(s)` : 'All products already coded',
+            )
+            setCodesOpen(false)
+          } catch (e) {
+            toast.error((e as Error).message)
+          }
+        }}
       />
       <ConfirmDialog
         open={!!deleting}

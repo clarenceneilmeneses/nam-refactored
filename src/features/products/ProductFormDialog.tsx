@@ -154,6 +154,12 @@ export function ProductFormDialog({
             Auto-created from a quotation — saving completes it.
           </p>
         )}
+        {product?.item_code && (
+          <p className="flex items-center gap-2 rounded-md bg-page px-3 py-2 text-xs text-ink-secondary">
+            <Badge variant="accent" className="font-mono">{product.item_code}</Badge>
+            Item code — assigned automatically and permanent, even if the product is renamed or recategorized.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="space-y-1 sm:col-span-3">
             <Label>Name *</Label>

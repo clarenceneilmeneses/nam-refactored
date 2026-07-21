@@ -233,6 +233,7 @@ describe('buildPriceUpdates', () => {
     current_stock: 0,
     reorder_level: 0,
     is_draft: false,
+    item_code: null,
   }
   const mapping = Object.fromEntries(PRICE_FIELDS.map((f) => [f.key, f.key]))
 

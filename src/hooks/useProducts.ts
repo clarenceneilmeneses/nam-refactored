@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAll, supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/log'
 import { useAuth } from '@/hooks/useAuth'
+import { CATEGORIES_KEY } from '@/hooks/useCategories'
 import { formatPeso } from '@/lib/format'
 import type { ProductInsert, ProductRow, ProductUpdate } from '@/types/database'
 
 export const PRODUCTS_KEY = ['products'] as const
+export const ITEM_CODES_KEY = ['app_settings', 'item_codes_enabled'] as const
 
 export function useProducts() {
   return useQuery({
@@ -51,6 +53,49 @@ export function useProductSearch(query: string) {
 export async function saveProductUnit(item: string, unit: string): Promise<void> {
   const { error } = await supabase.rpc('set_product_unit', { p_item: item, p_unit: unit })
   if (error) throw new Error(error.message)
+}
+
+/**
+ * Whether the one-time item-code transition has happened (19_item_codes.sql).
+ * Shared by every device — stored in app_settings, not localStorage.
+ */
+export function useItemCodesEnabled() {
+  const query = useQuery({
+    queryKey: ITEM_CODES_KEY,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'item_codes_enabled')
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      return data?.value === true
+    },
+    staleTime: 60_000,
+  })
+  return { ...query, enabled: query.data === true }
+}
+
+/**
+ * Activates item codes (first call: codes the ENTIRE catalog with
+ * per-category prefixes) or, once active, assigns codes to any uncoded
+ * products (e.g. after a Legacy Restore). The RPC writes the system_logs
+ * entry itself. Returns how many products were coded.
+ */
+export function useActivateItemCodes() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc('activate_item_codes')
+      if (error) throw new Error(error.message)
+      return data as number
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY })
+      queryClient.invalidateQueries({ queryKey: ITEM_CODES_KEY })
+      queryClient.invalidateQueries({ queryKey: CATEGORIES_KEY })
+    },
+  })
 }
 
 export function useCreateProduct() {
