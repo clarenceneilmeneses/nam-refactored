@@ -75,6 +75,17 @@ export function computeProductMargin(supplierPrice: number, namPrice: number): s
   return `${round2(((namPrice - supplierPrice) / namPrice) * 100).toFixed(2)}%`
 }
 
+/**
+ * Value of the stock on hand at a given unit price. Derived on the fly rather
+ * than stored: a products column would come back empty after every Legacy
+ * Restore, which reloads only the columns the legacy dump carries.
+ * A null price means "unknown", not zero.
+ */
+export function stockValue(stock: number | null, unitPrice: number | null): number | null {
+  if (unitPrice === null) return null
+  return round2((stock ?? 0) * unitPrice)
+}
+
 /* Bidirectional markup/margin solvers (quotation price calculator):
  *   markup% = (n − s) / s × 100   margin% = (n − s) / n × 100
  */

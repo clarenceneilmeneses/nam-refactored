@@ -8,6 +8,7 @@ import {
   parseCurrency,
   parsePaymentTermDays,
   round2,
+  stockValue,
 } from './calculations'
 
 // Expectations below use real rows from the migrated dataset (02_data.sql)
@@ -85,6 +86,23 @@ describe('computeProductMargin', () => {
   })
   it('zero NAM price → 0%', () => {
     expect(computeProductMargin(80, 0)).toBe('0%')
+  })
+})
+
+describe('stockValue', () => {
+  it('values stock on hand at the supplier price', () => {
+    expect(stockValue(40, 120)).toBe(4800)
+    expect(stockValue(3, 33.335)).toBe(100.01)
+  })
+  it('no price means unknown, not zero', () => {
+    expect(stockValue(40, null)).toBeNull()
+  })
+  it('missing stock counts as none on hand', () => {
+    expect(stockValue(null, 120)).toBe(0)
+    expect(stockValue(0, 120)).toBe(0)
+  })
+  it('negative stock values negative — stock is allowed to go below zero', () => {
+    expect(stockValue(-2, 120)).toBe(-240)
   })
 })
 

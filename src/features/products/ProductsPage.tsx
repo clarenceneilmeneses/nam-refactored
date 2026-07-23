@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { stockValue } from '@/lib/calculations'
 import { formatPeso } from '@/lib/format'
 import type { ProductRow } from '@/types/database'
 import { ProductFormDialog } from './ProductFormDialog'
@@ -124,15 +125,20 @@ export function ProductsPage() {
     let out = 0
     let uncat = 0
     let totalSupplier = 0
-    let totalNam = 0
+    let inventoryValue = 0
+    // Items with no supplier price can't be valued, so the total would quietly
+    // under-report without saying so — the card names the count.
+    let unpriced = 0
     for (const p of filtered) {
       if (p.is_draft) drafts += 1
       if ((p.current_stock ?? 0) === 0) out += 1
       if (!p.category_code || p.category_code === 'Uncategorized') uncat += 1
       totalSupplier += p.supplier_price ?? 0
-      totalNam += p.nam_price ?? 0
+      const value = stockValue(p.current_stock, p.supplier_price)
+      if (value === null) unpriced += 1
+      else inventoryValue += value
     }
-    return { total: filtered.length, drafts, out, uncat, totalSupplier, totalNam }
+    return { total: filtered.length, drafts, out, uncat, totalSupplier, inventoryValue, unpriced }
   }, [filtered])
 
   const selectedProducts = useMemo(
@@ -211,6 +217,21 @@ export function ProductsPage() {
           cell: (c) => <StockBadge product={c.row.original} />,
           meta: { thClassName: 'text-center', tdClassName: 'text-center' },
         }),
+        // What the stock on hand is worth at cost. Derived, never stored — see
+        // stockValue() in lib/calculations.ts. An accessor function (not a
+        // column name) so the table sorts it as a number.
+        col.accessor((p) => stockValue(p.current_stock, p.supplier_price), {
+          id: 'stock_value',
+          header: 'Stock Value',
+          cell: (c) => {
+            const value = c.getValue() as number | null
+            if (value === null) return <span className="text-ink-muted">—</span>
+            return (
+              <span className={cn('whitespace-nowrap tabular-nums', value < 0 && 'text-critical')}>{formatPeso(value)}</span>
+            )
+          },
+          meta: { thClassName: 'text-right', tdClassName: 'text-right' },
+        }),
         col.display({
           id: 'actions',
           header: '',
@@ -268,7 +289,13 @@ export function ProductsPage() {
           <StatCard tone="critical" icon="warning" label="Out of stock" value={stats.out.toLocaleString()} />
           <StatCard tone="serious" icon="sell" label="Uncategorized" value={stats.uncat.toLocaleString()} />
           <StatCard tone="neutral" icon="shopping_cart" label="Total supplier price" value={formatPeso(stats.totalSupplier)} />
-          <StatCard tone="good" icon="payments" label="Total NAM price" value={formatPeso(stats.totalNam)} />
+          <StatCard
+            tone="good"
+            icon="warehouse"
+            label="Total inventory value"
+            value={formatPeso(stats.inventoryValue)}
+            hint={stats.unpriced > 0 ? `${stats.unpriced.toLocaleString()} item(s) have no supplier price` : undefined}
+          />
         </div>
       )}
 
