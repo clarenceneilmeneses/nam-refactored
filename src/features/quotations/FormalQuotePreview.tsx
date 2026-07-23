@@ -34,8 +34,8 @@ type FormalQuotePreviewProps = {
 
 type DocRow = { key: string; name: string; qty: number; price: number; image: string | null }
 
-/** Doc fields persisted back to the client profile (15_clients_contact_details.sql). */
-type ClientDocDetails = { contact_person: string; contact_number: string; email: string; address: string }
+/** Doc fields persisted back to the client profile (15_clients_contact_details.sql, 21_clients_conforme.sql). */
+type ClientDocDetails = { contact_person: string; contact_number: string; email: string; address: string; conforme_name: string }
 
 /** Totals rows: commas + 2 decimals (₱ prefixed where rendered). */
 function money(n: number): string {
@@ -200,10 +200,14 @@ export function FormalQuotePreview({
       d.contact_person.trim() === saved.contact_person.trim() &&
       d.contact_number.trim() === saved.contact_number.trim() &&
       d.email.trim() === saved.email.trim() &&
-      d.address.trim() === saved.address.trim()
+      d.address.trim() === saved.address.trim() &&
+      d.conforme_name.trim() === saved.conforme_name.trim()
     )
       return
     savedRef.current = { ...d }
+    // A conforme line left as the company name stays NULL, so a later rename
+    // of the client still flows through to the document.
+    const conforme = d.conforme_name.trim()
     void saveClientRecord({
       id: client?.id,
       company_name: name,
@@ -211,6 +215,7 @@ export function FormalQuotePreview({
       contact_number: d.contact_number.trim() || null,
       email: d.email.trim() || null,
       address: d.address.trim() || null,
+      conforme_name: conforme && conforme !== name ? conforme : null,
     })
       .then((row) => {
         queryClient.invalidateQueries({ queryKey: CLIENTS_KEY })
@@ -392,6 +397,7 @@ export function FormalQuotePreview({
       contact_number: client?.contact_number ?? '',
       email: client?.email ?? '',
       address: (address || client?.address) ?? '',
+      conforme_name: client?.conforme_name ?? company ?? '',
     }
     savedRef.current = { ...detailsRef.current }
   }
@@ -702,11 +708,22 @@ export function FormalQuotePreview({
               <Editable block initial={signer.name} className="text-[13px] font-bold" onText={(t) => { signer.name = t }} />
               <Editable block initial={signer.title} className="text-[10px]" onText={(t) => { signer.title = t }} />
               <p className="mt-6 font-bold">Conforme:</p>
-              {/* Client name under Conforme — clients such as PFF treat the
-                  signed quotation as their purchase order, so the accepting
-                  company has to be named on it. */}
-              <Editable block initial={company ?? ''} className="font-bold" />
-              <p className="mt-12 text-[10px]">Signature over printed name</p>
+              {/* The accepting party's name sits at the BOTTOM of the block,
+                  directly above its caption, so the gap under "Conforme:" is
+                  the space they sign in — the signature then lands over the
+                  printed name, as the caption says. Prefilled with the client
+                  company (clients such as PFF treat the signed quotation as
+                  their purchase order, so the accepting company has to be
+                  named on it) and saved per client once edited. */}
+              <Editable
+                block
+                initial={details.conforme_name}
+                className="mt-12 font-bold"
+                onText={(t) => {
+                  details.conforme_name = t
+                }}
+              />
+              <p className="text-[10px]">Signature over printed name</p>
             </div>
           </div>
 
