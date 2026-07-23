@@ -112,6 +112,21 @@ export type AppSettingRow = {
   updated_at: string
 }
 
+/**
+ * Formal-quotation defaults shared by every device, stored as the
+ * `quote_doc_terms` app_settings row (20_quote_doc_terms.sql). Editing them
+ * on the document changes them for every future quotation.
+ */
+export type QuoteDocTerms = {
+  vat_mode: 'inclusive' | 'exclusive' | 'exempt'
+  /** Delivery-terms lead time in days, as printed — e.g. "4-6". */
+  lead_time: string
+  /** Validity wording, as printed — e.g. "1 month". */
+  validity: string
+  /** Quality-terms replacement window in days, as printed — e.g. "7". */
+  replacement_days: string
+}
+
 export type CompanyAssignmentRow = {
   id: number
   company_name: string | null
@@ -321,6 +336,15 @@ export type Database = {
       }
       create_sales_batch: { Args: { p_rows: SaleInsert[] }; Returns: SaleRow[] }
       set_product_unit: { Args: { p_item: string; p_unit: string }; Returns: undefined }
+      set_quote_doc_terms: {
+        Args: {
+          p_vat_mode: QuoteDocTerms['vat_mode']
+          p_lead_time: string
+          p_validity: string
+          p_replacement_days: string
+        }
+        Returns: QuoteDocTerms
+      }
       approve_quotation: { Args: { p_id: number }; Returns: QuotationRow }
       finalize_quotation: { Args: { p_id: number; p_date: string }; Returns: SaleRow }
       remove_quotation_item: { Args: { p_id: number }; Returns: undefined }

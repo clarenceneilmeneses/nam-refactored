@@ -12,6 +12,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { CLIENTS_KEY, saveClientRecord, useClients } from '@/hooks/useClients'
 import { PRODUCTS_KEY, saveProductUnit, useProducts } from '@/hooks/useProducts'
 import { saveQuoteSigner } from '@/hooks/useProfile'
+import { QUOTE_DOC_TERMS_KEY, QUOTE_DOC_TERM_DEFAULTS, saveQuoteDocTerms, useQuoteDocTerms } from '@/hooks/useQuoteDocTerms'
+import type { QuoteDocTerms } from '@/types/database'
 import { computeDocTotals, type VatMode } from './formalDocMath'
 import { SIGNATURE_KEYS, SIGNER_DEFAULTS, fileToDataUrl, itemImageKey, loadCachedImage, saveCachedImage } from './quoteImages'
 
@@ -154,7 +156,13 @@ export function FormalQuotePreview({
   remarks,
   items,
 }: FormalQuotePreviewProps) {
-  const [vatMode, setVatMode] = useState<VatMode>('inclusive')
+  // VAT mode, lead time, validity and the replacement window are company-wide
+  // defaults (20_quote_doc_terms.sql), not per-document state: they prefill
+  // from app_settings and edits save back on print/close, so they stop
+  // resetting to the legacy wording on every quote.
+  const { data: terms, isPending: termsPending } = useQuoteDocTerms()
+  // null until someone touches the select — the stored default wins before that.
+  const [vatOverride, setVatOverride] = useState<VatMode | null>(null)
   const [lessWht, setLessWht] = useState(false)
   const [rows, setRows] = useState<DocRow[]>(() =>
     items.map((line, i) => ({
@@ -273,10 +281,49 @@ export function FormalQuotePreview({
       .catch((e) => toast.error(`Couldn't save signatory details: ${(e as Error).message}`))
   }
 
+  // Document terms — same shape as the blocks above, but shared by everyone
+  // rather than attached to a client, a product or an account.
+  const termsRef = useRef<QuoteDocTerms | null>(null)
+  const termsSavedRef = useRef<QuoteDocTerms | null>(null)
+  // Derived rather than state: the stored default applies until the select is
+  // touched, and the ref stays in step so the save below sees the live value.
+  const vatMode: VatMode = vatOverride ?? terms?.vat_mode ?? QUOTE_DOC_TERM_DEFAULTS.vat_mode
+  if (termsRef.current) termsRef.current.vat_mode = vatMode
+
+  const persistDocTerms = () => {
+    const t = termsRef.current
+    const saved = termsSavedRef.current
+    if (!t || !saved) return
+    // A field cleared on the document keeps its previous wording — an empty
+    // lead time would otherwise become the default for every future quote.
+    const next: QuoteDocTerms = {
+      vat_mode: t.vat_mode,
+      lead_time: t.lead_time.trim() || saved.lead_time,
+      validity: t.validity.trim() || saved.validity,
+      replacement_days: t.replacement_days.trim() || saved.replacement_days,
+    }
+    if (
+      next.vat_mode === saved.vat_mode &&
+      next.lead_time === saved.lead_time &&
+      next.validity === saved.validity &&
+      next.replacement_days === saved.replacement_days
+    )
+      return
+    termsSavedRef.current = next
+    // The RPC writes its own system_logs entry.
+    void saveQuoteDocTerms(next)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: QUOTE_DOC_TERMS_KEY })
+        toast.success('Quotation terms saved — every future quote starts with these')
+      })
+      .catch((e) => toast.error(`Couldn't save the quotation terms: ${(e as Error).message}`))
+  }
+
   const persistAll = () => {
     persistClientDetails()
     persistUomEdits()
     persistSigner()
+    persistDocTerms()
   }
   // Persist on close too (Close button, Escape, navigating away) — the ref
   // keeps the unmount cleanup pointed at the latest values.
@@ -324,13 +371,20 @@ export function FormalQuotePreview({
     setRows((rs) => rs.map((r, i) => (i === index ? { ...r, ...patch } : r)))
   }
 
+  // The Editables are uncontrolled (initial value only), so don't render the
+  // document until the client/product/terms lookups have settled — a late
+  // prefill would never reach the DOM. The first two are warm from the page
+  // behind this; the terms row is a single-key read.
+  if (clientsPending || productsPending || termsPending) return null
+
   const itemsTotal = round2(rows.reduce((sum, r) => sum + round2(r.qty * r.price), 0))
   const totals = computeDocTotals(itemsTotal, vatMode, lessWht)
 
-  // The Editables are uncontrolled (initial value only), so don't render the
-  // document until the client/product lookups have settled — a late prefill
-  // would never reach the DOM. Both queries are warm from the page behind this.
-  if (clientsPending || productsPending) return null
+  if (!termsRef.current) {
+    termsRef.current = { ...(terms ?? QUOTE_DOC_TERM_DEFAULTS), vat_mode: vatMode }
+    termsSavedRef.current = { ...termsRef.current }
+  }
+  const docTerms = termsRef.current
 
   if (!detailsRef.current) {
     detailsRef.current = {
@@ -361,9 +415,15 @@ export function FormalQuotePreview({
         {/* Control strip — never printed */}
         <div className="fq-controls mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-surface p-3 shadow-lg print:hidden">
           <p className="min-w-48 flex-1 text-xs text-ink-secondary">
-            💡 <strong>Live Editing:</strong> Click any text to type. Contact details are remembered per client and auto-fill the next quote.
+            💡 <strong>Live Editing:</strong> Click any text to type. Contact details are remembered per client; the VAT mode, lead time and
+            validity are remembered for every quote.
           </p>
-          <Select value={vatMode} onChange={(e) => setVatMode(e.target.value as VatMode)} className="w-44" aria-label="VAT mode">
+          <Select
+            value={vatMode}
+            onChange={(e) => setVatOverride(e.target.value as VatMode)}
+            className="w-44"
+            aria-label="VAT mode"
+          >
             <option value="inclusive">VAT Inclusive (12%)</option>
             <option value="exclusive">VAT Exclusive (+12%)</option>
             <option value="exempt">VAT Exempt (0%)</option>
@@ -565,8 +625,16 @@ export function FormalQuotePreview({
                     <p className="font-bold underline">Delivery Terms</p>
                     <ul className="list-disc space-y-0.5 pl-4">
                       <li>
-                        Client shall provide weekly projected requirements and <Editable initial="4-6" className="min-w-6 text-center font-bold" /> days
-                        lead time for planning purpose. Any modification in the daily should be communicated twenty-four (24) hours before the schedule.
+                        Client shall provide weekly projected requirements and{' '}
+                        <Editable
+                          initial={docTerms.lead_time}
+                          className="min-w-6 text-center font-bold"
+                          onText={(t) => {
+                            docTerms.lead_time = t
+                          }}
+                        />{' '}
+                        days lead time for planning purpose. Any modification in the daily should be communicated twenty-four (24) hours before the
+                        schedule.
                       </li>
                       <li>Client Scheduled delivery on Monday-Friday.</li>
                       <li>
@@ -580,7 +648,14 @@ export function FormalQuotePreview({
                     <ul className="list-disc space-y-0.5 pl-4">
                       <li>Client Authorized Representative must signed the Receiving Inspection Stamp.</li>
                       <li>
-                        Items reported as damaged or wrong items must be replaced within <Editable initial="7" className="min-w-4 text-center font-bold" />{' '}
+                        Items reported as damaged or wrong items must be replaced within{' '}
+                        <Editable
+                          initial={docTerms.replacement_days}
+                          className="min-w-4 text-center font-bold"
+                          onText={(t) => {
+                            docTerms.replacement_days = t
+                          }}
+                        />{' '}
                         days of the reported date (Receiving Inspection Stamp), provided all eligibility criteria are met.
                       </li>
                     </ul>
@@ -589,7 +664,14 @@ export function FormalQuotePreview({
                     <p className="font-bold underline">Validity</p>
                     <ul className="list-disc space-y-0.5 pl-4">
                       <li>
-                        <Editable initial="1 month" className="min-w-10 font-bold" /> validity effective receipt of this quotation.
+                        <Editable
+                          initial={docTerms.validity}
+                          className="min-w-10 font-bold"
+                          onText={(t) => {
+                            docTerms.validity = t
+                          }}
+                        />{' '}
+                        validity effective receipt of this quotation.
                       </li>
                     </ul>
                   </div>
@@ -620,7 +702,11 @@ export function FormalQuotePreview({
               <Editable block initial={signer.name} className="text-[13px] font-bold" onText={(t) => { signer.name = t }} />
               <Editable block initial={signer.title} className="text-[10px]" onText={(t) => { signer.title = t }} />
               <p className="mt-6 font-bold">Conforme:</p>
-              <p className="mt-14 text-[10px]">Signature over printed name</p>
+              {/* Client name under Conforme — clients such as PFF treat the
+                  signed quotation as their purchase order, so the accepting
+                  company has to be named on it. */}
+              <Editable block initial={company ?? ''} className="font-bold" />
+              <p className="mt-12 text-[10px]">Signature over printed name</p>
             </div>
           </div>
 

@@ -120,19 +120,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const uid = session!.user.id
       const CORE_COLS = 'id, username, full_name, role_id, auth_id, created_at, roles(name)'
       type UserRowJoined = UserRow & { roles: { name: string } | null }
+      // quote_signer_* must be read here: the formal quotation prefills the
+      // signatory from the profile, so leaving them out of this select made a
+      // saved position silently fall back to the legacy default every time.
+      const OPTIONAL_COLS = 'avatar_url, quote_signer_name, quote_signer_title'
       const primary = await supabase
         .from('users')
-        .select(`${CORE_COLS}, avatar_url`)
+        .select(`${CORE_COLS}, ${OPTIONAL_COLS}`)
         .eq('auth_id', uid)
         .maybeSingle()
       let user = primary.data as UserRowJoined | null
       if (primary.error) {
-        // e.g. avatar_url not migrated yet (08_profile.sql) — never let a
-        // schema hiccup masquerade as "no profile" and lock the user out.
-        console.error('Profile load failed, retrying without avatar_url:', primary.error.message)
+        // e.g. avatar_url (08_profile.sql) or quote_signer_* (17_signer_profile.sql)
+        // not migrated yet — never let a schema hiccup masquerade as "no
+        // profile" and lock the user out.
+        console.error('Profile load failed, retrying without the optional columns:', primary.error.message)
         const fallback = await supabase.from('users').select(CORE_COLS).eq('auth_id', uid).maybeSingle()
         user = fallback.data
-          ? ({ ...(fallback.data as Omit<UserRowJoined, 'avatar_url'>), avatar_url: null } as UserRowJoined)
+          ? ({
+              ...(fallback.data as Omit<UserRowJoined, 'avatar_url' | 'quote_signer_name' | 'quote_signer_title'>),
+              avatar_url: null,
+              quote_signer_name: null,
+              quote_signer_title: null,
+            } as UserRowJoined)
           : null
       }
       if (cancelled) return
