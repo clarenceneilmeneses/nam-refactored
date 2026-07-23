@@ -551,6 +551,7 @@ export function RecordsPage() {
           data={filtered}
           columns={columns}
           pageSize={50}
+          resetPageKey={[search, range.preset, range.from, range.to, company, category, delivery, payment, siReview].join('|')}
           stickyHeader
           rowClassName={(row) => {
             // Solid tints (tone mixed over surface), not /10 opacities: the four

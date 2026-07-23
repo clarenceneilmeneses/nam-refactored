@@ -117,6 +117,7 @@ export function LogsPage() {
           globalFilter={search}
           onGlobalFilterChange={setSearch}
           pageSize={100}
+          resetPageKey={`${userFilter}|${actionFilter}`}
           stickyHeader
           emptyTitle="No log entries"
           emptyDescription="Nothing matches the current search/filters."

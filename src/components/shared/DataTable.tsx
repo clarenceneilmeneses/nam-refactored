@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -8,6 +8,7 @@ import {
   useReactTable,
   type ColumnDef,
   type OnChangeFn,
+  type PaginationState,
   type RowData,
   type RowSelectionState,
   type SortingState,
@@ -45,6 +46,13 @@ type DataTableProps<T> = {
   getRowId?: (row: T) => string
   /** Caps the table height and keeps the header row pinned while scrolling. */
   stickyHeader?: boolean
+  /**
+   * Value that identifies the page's own filters (search boxes, dropdowns that
+   * narrow `data` before it gets here). Changing it sends the reader back to
+   * page 1, which is what they expect when they re-filter. Editing a record
+   * must NOT change it — that's the whole point, see autoResetPageIndex below.
+   */
+  resetPageKey?: unknown
 }
 
 export function DataTable<T>({
@@ -61,14 +69,17 @@ export function DataTable<T>({
   onRowSelectionChange,
   getRowId,
   stickyHeader = false,
+  resetPageKey,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter, ...(rowSelection !== undefined && { rowSelection }) },
+    state: { sorting, pagination, globalFilter, ...(rowSelection !== undefined && { rowSelection }) },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     onGlobalFilterChange,
     onRowSelectionChange,
     enableRowSelection: rowSelection !== undefined,
@@ -77,7 +88,12 @@ export function DataTable<T>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize } },
+    // Off by default in this app: `data` gets a new identity on every query
+    // refetch (saving one record, a realtime invalidate), and the default would
+    // yank someone editing a row on page 7 back to page 1. Page changes are
+    // driven deliberately instead — by resetPageKey, the global filter, and the
+    // out-of-range clamp below.
+    autoResetPageIndex: false,
     globalFilterFn: 'includesString',
   })
 
@@ -85,6 +101,21 @@ export function DataTable<T>({
   const { pageIndex } = table.getState().pagination
   const pageCount = table.getPageCount()
   const total = table.getFilteredRowModel().rows.length
+
+  // Re-filtering starts over at page 1 (both the page's own filters and the
+  // table-level search box).
+  useEffect(() => {
+    setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }))
+  }, [resetPageKey, globalFilter])
+
+  // Rows can disappear under the reader (a filter narrows, someone deletes the
+  // last row on the page). Without auto-reset that would strand them on a blank
+  // page, so fall back to the last page that still exists.
+  useEffect(() => {
+    if (pageCount > 0 && pageIndex > pageCount - 1) {
+      setPagination((p) => ({ ...p, pageIndex: pageCount - 1 }))
+    }
+  }, [pageIndex, pageCount])
 
   return (
     <div>

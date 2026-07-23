@@ -246,6 +246,7 @@ export function FinancePage() {
           globalFilter={search}
           onGlobalFilterChange={setSearch}
           pageSize={50}
+          resetPageKey={statusFilter}
           rowClassName={(row) => (isOverdue(row) ? 'bg-critical/5' : '')}
         />
       )}

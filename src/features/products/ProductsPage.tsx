@@ -133,8 +133,10 @@ export function ProductsPage() {
       if (p.is_draft) drafts += 1
       if ((p.current_stock ?? 0) === 0) out += 1
       if (!p.category_code || p.category_code === 'Uncategorized') uncat += 1
-      totalSupplier += p.supplier_price ?? 0
       const value = stockValue(p.current_stock, p.supplier_price)
+      // Supplier price × inventory on hand — the cost of what's in stock, not a
+      // sum of unit prices (adding unit prices across products was meaningless).
+      totalSupplier += value ?? 0
       if (value === null) unpriced += 1
       else inventoryValue += value
     }
@@ -288,7 +290,13 @@ export function ProductsPage() {
           <StatCard tone="warning" icon="edit_note" label="Draft products" value={stats.drafts.toLocaleString()} />
           <StatCard tone="critical" icon="warning" label="Out of stock" value={stats.out.toLocaleString()} />
           <StatCard tone="serious" icon="sell" label="Uncategorized" value={stats.uncat.toLocaleString()} />
-          <StatCard tone="neutral" icon="shopping_cart" label="Total supplier price" value={formatPeso(stats.totalSupplier)} />
+          <StatCard
+            tone="neutral"
+            icon="shopping_cart"
+            label="Total supplier price"
+            value={formatPeso(stats.totalSupplier)}
+            hint="Supplier price × inventory"
+          />
           <StatCard
             tone="good"
             icon="warehouse"
@@ -341,6 +349,7 @@ export function ProductsPage() {
           data={filtered}
           columns={columns}
           pageSize={50}
+          resetPageKey={`${search}|${category}|${view}`}
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
           getRowId={(p) => String(p.id)}
