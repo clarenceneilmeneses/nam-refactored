@@ -27,6 +27,8 @@ export type SaleRow = {
   si_reviewed: boolean
   si_reviewed_by: number | null
   si_reviewed_at: string | null
+  /** Delivery Receipt # (22_dr_number.sql). This system only — no legacy dump carries it. */
+  dr_number: string | null
   buyer: string | null
   remarks: string | null
   supplier: string | null
@@ -192,8 +194,12 @@ export type QuotationBatchItem = {
   nam_unit_price: number
 }
 
-/** One entry of deliver_items' p_items JSON payload (05_records_rpc.sql). */
-export type DeliverItemInput = { id: number; deliver_qty: number }
+/**
+ * One entry of deliver_items' p_items JSON payload (05_records_rpc.sql).
+ * dr_number stamps the Delivery Receipt # on the delivered row only — a partial
+ * delivery's pending remainder ships later under its own DR (22_dr_number.sql).
+ */
+export type DeliverItemInput = { id: number; deliver_qty: number; dr_number?: string | null }
 
 /** Per-item result returned by deliver_items, used for system_logs entries. */
 export type DeliverItemResult = {
@@ -201,6 +207,8 @@ export type DeliverItemResult = {
   item: string | null
   company: string | null
   po_number: string | null
+  /** The DR # stamped by this call, or null when none was entered. */
+  dr_number: string | null
   original_qty: number
   delivered_qty: number
   remainder_id: number | null
@@ -228,11 +236,17 @@ export const PRIVILEGES: ReadonlyArray<{ name: PrivilegeName; label: string; des
   { name: 'mark_paid', label: 'Mark Paid', description: 'Change a record’s Paid status, once its SI # is reviewed' },
 ]
 
-/** Returned by legacy_restore_commit (18_legacy_restore.sql). */
+/** Returned by legacy_restore_commit (18_legacy_restore.sql, 22_dr_number.sql). */
 export type LegacyRestoreSummary = {
   tables: Record<string, number>
   si_review_preserved: number
   si_paid_grandfathered: number
+  /** Paid marks made here that the dump did not have, re-applied after the reload. */
+  paid_preserved: number
+  /** DR #s re-applied — no dump carries the column. */
+  dr_preserved: number
+  /** Local rows (Paid / reviewed / with a DR #) the dump no longer has: that work is gone. */
+  local_only_rows_lost: number
 }
 
 export type Database = {

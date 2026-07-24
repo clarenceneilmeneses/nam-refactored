@@ -23,6 +23,7 @@ const COLUMNS: { key: keyof SaleRow; header: string }[] = [
   { key: 'payment_status', header: 'Payment Status' },
   { key: 'date_paid', header: 'Date Paid' },
   { key: 'si_number', header: 'SI Number' },
+  { key: 'dr_number', header: 'DR Number' },
   { key: 'buyer', header: 'Buyer' },
   { key: 'supplier', header: 'Supplier' },
   { key: 'remarks', header: 'Remarks' },

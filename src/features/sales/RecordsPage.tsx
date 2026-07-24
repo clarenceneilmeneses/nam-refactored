@@ -405,6 +405,10 @@ export function RecordsPage() {
             )
           },
         }),
+        col.accessor('dr_number', {
+          header: 'DR #',
+          cell: (c) => <span className="whitespace-nowrap">{c.getValue() || '—'}</span>,
+        }),
         col.accessor('buyer', {
           header: 'Buyer',
           cell: (c) => <span className="block max-w-32 truncate" title={c.getValue() ?? ''}>{c.getValue() || '—'}</span>,

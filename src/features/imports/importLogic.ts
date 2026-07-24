@@ -37,6 +37,9 @@ export const SALES_FIELDS: readonly ImportField[] = [
   { key: 'remarks', label: 'Remarks', required: false },
   { key: 'supplier', label: 'Supplier', required: false },
   { key: 'withholding_tax', label: 'Withholding Tax', required: false },
+  // Appended, never inserted: the order above IS the positional fallback for
+  // headerless legacy sheets, which end at Withholding Tax.
+  { key: 'dr_number', label: 'DR Number', required: false },
 ] as const
 
 /** "Centralized Suppliers' Price" sheet columns. */
@@ -70,6 +73,7 @@ const CANDIDATES: Record<string, string[]> = {
   payment_term: ['terms', 'term', 'paymentterm'],
   due_date: ['duedate'],
   si_number: ['sinumber', 'si', 'sino', 'salesinvoice'],
+  dr_number: ['drnumber', 'dr', 'drno', 'deliveryreceipt', 'deliveryreceiptno'],
   buyer: ['buyer'],
   remarks: ['remarks', 'notes'],
   supplier: ['supplier', 'vendor'],
@@ -286,6 +290,7 @@ export function buildSalesRows(rows: Record<string, string>[], mapping: Mapping)
       payment_term: paymentTerm,
       due_date: dueDate,
       si_number: get(row, 'si_number') || null,
+      dr_number: get(row, 'dr_number') || null,
       buyer: get(row, 'buyer') || null,
       remarks: get(row, 'remarks') || null,
       supplier: get(row, 'supplier') || null,

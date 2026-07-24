@@ -33,6 +33,7 @@ type Draft = {
   payment_term: string
   due_date: string
   si_number: string
+  dr_number: string
   buyer: string
   sales_invoice_no: string
   remarks: string
@@ -58,6 +59,7 @@ function toDraft(sale: SaleRow): Draft {
     payment_term: sale.payment_term ?? '',
     due_date: sale.due_date ?? '',
     si_number: sale.si_number ?? '',
+    dr_number: sale.dr_number ?? '',
     buyer: sale.buyer ?? '',
     sales_invoice_no: sale.sales_invoice_no ?? '',
     remarks: sale.remarks ?? '',
@@ -149,6 +151,7 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
           ...(siEditable && (draft.si_number || '') !== (sale.si_number ?? '')
             ? { si_reviewed: false, si_reviewed_by: null, si_reviewed_at: null }
             : {}),
+          dr_number: draft.dr_number.trim() || null,
           buyer: draft.buyer || null,
           sales_invoice_no: draft.sales_invoice_no || null,
           remarks: draft.remarks || null,
@@ -270,11 +273,21 @@ export function RecordEditDialog({ sale, onClose }: { sale: SaleRow | null; onCl
             )}
           </div>
           <div className="space-y-1">
+            <Label>DR Number</Label>
+            <Input
+              value={draft.dr_number}
+              placeholder="Delivery Receipt #"
+              onChange={(e) => set('dr_number', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
             <Label>Buyer</Label>
             <Input value={draft.buyer} onChange={(e) => set('buyer', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Sales Invoice No</Label>
+            {/* Legacy column name is sales_invoice_no, but it holds the SUPPLIER's
+                invoice — Sales Entry fills it from the quotation's supplier_invoice_no. */}
+            <Label>Supplier Invoice No</Label>
             <Input value={draft.sales_invoice_no} onChange={(e) => set('sales_invoice_no', e.target.value)} />
           </div>
           <div className="space-y-1 sm:col-span-2">

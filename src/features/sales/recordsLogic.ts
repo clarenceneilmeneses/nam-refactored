@@ -138,7 +138,7 @@ export function matchesSiReview(sale: SaleRow, filter: SiReviewFilter): boolean 
   }
 }
 
-/** Text search across item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier. */
+/** Text search across item, PO, S/N, SI #, DR #, remarks, TIN, company, buyer, and supplier. */
 export function matchesRecordSearch(sale: SaleRow, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
@@ -147,6 +147,7 @@ export function matchesRecordSearch(sale: SaleRow, query: string): boolean {
     sale.po_number,
     sale.sn,
     sale.si_number,
+    sale.dr_number,
     sale.remarks,
     sale.tin,
     sale.company,

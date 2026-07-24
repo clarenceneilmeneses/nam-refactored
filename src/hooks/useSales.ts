@@ -148,17 +148,18 @@ export function useDeliverItems() {
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: SALES_KEY })
       for (const r of results) {
+        const dr = r.dr_number ? ` [DR# ${r.dr_number}]` : ''
         if (r.remainder_qty > 0) {
           logAction(
             profile?.id,
             'Partial Delivery',
-            `Delivered ${r.delivered_qty} out of ${r.original_qty} items for ${r.company ?? ''} (Item: ${r.item ?? ''})`,
+            `Delivered ${r.delivered_qty} out of ${r.original_qty} items for ${r.company ?? ''} (Item: ${r.item ?? ''})${dr}`,
           )
         } else {
           logAction(
             profile?.id,
             'Full Delivery',
-            `Delivered ${r.item ?? ''} (Qty: ${r.delivered_qty}) for ${r.company ?? ''}`,
+            `Delivered ${r.item ?? ''} (Qty: ${r.delivered_qty}) for ${r.company ?? ''}${dr}`,
           )
         }
       }

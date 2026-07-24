@@ -19,14 +19,21 @@ type BulkDeliverDialogProps = {
  * Legacy bulk-delivery modal: every selected pending row with an editable
  * Deliver Qty (default = full). Partial quantities split the row server-side
  * via the deliver_items RPC.
+ *
+ * The DR # is entered once for the whole dialog, not per row: one Delivery
+ * Receipt covers everything that leaves together, and records are per line
+ * item. It lands only on what actually ships — a partial delivery's remainder
+ * stays blank until it ships under its own DR.
  */
 export function BulkDeliverDialog({ open, rows, onClose, onDelivered }: BulkDeliverDialogProps) {
   const deliverItems = useDeliverItems()
   const [quantities, setQuantities] = useState<Record<number, string>>({})
+  const [drNumber, setDrNumber] = useState('')
 
   useEffect(() => {
     if (open) {
       setQuantities(Object.fromEntries(rows.map((r) => [r.id, String(r.quantity_requested ?? 0)])))
+      setDrNumber('')
     }
   }, [open, rows])
 
@@ -45,7 +52,10 @@ export function BulkDeliverDialog({ open, rows, onClose, onDelivered }: BulkDeli
       return
     }
     try {
-      const results = await deliverItems.mutateAsync(items.map((i) => ({ id: i.row.id, deliver_qty: i.deliver })))
+      const dr = drNumber.trim() || null
+      const results = await deliverItems.mutateAsync(
+        items.map((i) => ({ id: i.row.id, deliver_qty: i.deliver, dr_number: dr })),
+      )
       const splits = results.filter((r) => r.remainder_qty > 0).length
       toast.success(
         `Delivered ${results.length} item(s)${splits > 0 ? ` — ${splits} split into new pending record(s)` : ''}`,
@@ -63,6 +73,18 @@ export function BulkDeliverDialog({ open, rows, onClose, onDelivered }: BulkDeli
         Adjust the quantities below if you are making a partial delivery. Delivering partial quantities will split
         the remaining amount into a new pending record.
       </p>
+      <div className="mb-3 space-y-1">
+        <label htmlFor="bulk-dr-number" className="text-xs font-medium text-ink-secondary">
+          DR Number <span className="text-ink-muted">(optional — applied to all items below)</span>
+        </label>
+        <Input
+          id="bulk-dr-number"
+          className="h-8 w-56"
+          placeholder="Delivery Receipt #"
+          value={drNumber}
+          onChange={(e) => setDrNumber(e.target.value)}
+        />
+      </div>
       <div className="overflow-x-auto rounded-md border border-hairline">
         <table className="w-full text-sm">
           <thead>

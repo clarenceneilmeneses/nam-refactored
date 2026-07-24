@@ -182,6 +182,18 @@ export function LegacyRestoreTab() {
                 SI reviews kept on {summary.si_review_preserved.toLocaleString()} matching records
               </li>
             )}
+            {summary.paid_preserved > 0 && (
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-good" />
+                Paid kept on {summary.paid_preserved.toLocaleString()} record(s) the dump still had as unpaid
+              </li>
+            )}
+            {summary.dr_preserved > 0 && (
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-good" />
+                DR # kept on {summary.dr_preserved.toLocaleString()} record(s)
+              </li>
+            )}
             {summary.si_paid_grandfathered > 0 && (
               <li className="flex items-center gap-2">
                 <Info className="h-4 w-4 shrink-0 text-ink-muted" />
@@ -189,6 +201,20 @@ export function LegacyRestoreTab() {
               </li>
             )}
           </ul>
+          {summary.local_only_rows_lost > 0 && (
+            <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-ink-secondary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" />
+              <span>
+                <strong className="text-ink">
+                  {summary.local_only_rows_lost.toLocaleString()} record(s) marked Paid, reviewed or given a DR #
+                  here no longer exist in the dump.
+                </strong>{' '}
+                They were either entered only in this system, or the old system has since changed their date,
+                company, item or quantity. That work could not be carried over and will need re-entering — the
+                restore never guesses which record it belonged to.
+              </span>
+            </div>
+          )}
           <Button variant="outline" onClick={reset}>
             <RefreshCw className="h-4 w-4" /> Restore another dump
           </Button>
@@ -287,8 +313,9 @@ export function LegacyRestoreTab() {
               <CardTitle>What gets replaced</CardTitle>
               <CardDescription>
                 Checked tables are wiped and reloaded from the dump in one atomic step — either everything lands or
-                nothing changes. Logins, roles and special privileges are never touched, and SI reviews done here are
-                kept on records that still match.
+                nothing changes. Logins, roles and special privileges are never touched. On records that still match
+                the dump, work done here is carried over: SI reviews, DR #s, and Paid marks the old system doesn’t
+                have. Anything entered <em>only</em> here is not in the dump and will be gone — you’ll get a count.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

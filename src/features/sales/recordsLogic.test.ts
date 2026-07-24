@@ -38,6 +38,7 @@ function sale(overrides: Partial<SaleRow> = {}): SaleRow {
     si_reviewed: false,
     si_reviewed_by: null,
     si_reviewed_at: null,
+    dr_number: null,
     buyer: null,
     remarks: null,
     supplier: null,
@@ -163,19 +164,20 @@ describe('filters', () => {
     expect(matchesSiReview(pending, 'none')).toBe(false)
   })
 
-  it('matchesRecordSearch scans item, PO, S/N, SI #, remarks, TIN, company, buyer, and supplier', () => {
+  it('matchesRecordSearch scans item, PO, S/N, SI #, DR #, remarks, TIN, company, buyer, and supplier', () => {
     const row = sale({
       item: 'Bond Paper',
       po_number: 'PO-123',
       sn: 'SN-77',
       si_number: 'SI-9001',
+      dr_number: 'DR-4402',
       remarks: 'rush order',
       tin: '007-123-456',
       company: 'ACME Corp',
       buyer: 'Jane Cruz',
       supplier: 'Widget Co',
     })
-    for (const q of ['bond', 'po-123', 'sn-77', 'si-9001', 'rush', '007-123', 'acme', 'jane', 'widget']) {
+    for (const q of ['bond', 'po-123', 'sn-77', 'si-9001', 'dr-4402', 'rush', '007-123', 'acme', 'jane', 'widget']) {
       expect(matchesRecordSearch(row, q)).toBe(true)
     }
     expect(matchesRecordSearch(row, 'nowhere')).toBe(false)

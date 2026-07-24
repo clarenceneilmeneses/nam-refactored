@@ -35,6 +35,7 @@ function sale(overrides: Partial<SaleRow> = {}): SaleRow {
     si_reviewed: false,
     si_reviewed_by: null,
     si_reviewed_at: null,
+    dr_number: null,
     sales_invoice_no: null,
     contact_person_contact: null,
     created_at: '2026-07-01T00:00:00Z',
