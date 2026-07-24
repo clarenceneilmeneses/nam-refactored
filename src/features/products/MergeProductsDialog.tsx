@@ -51,7 +51,7 @@ export function MergeProductsDialog({
                 <th className="px-2 py-1.5">Keep</th>
                 <th className="px-2 py-1.5">Name</th>
                 <th className="px-2 py-1.5">Category</th>
-                <th className="px-2 py-1.5 text-right">NAM price</th>
+                <th className="px-2 py-1.5 text-right">Selling price</th>
                 <th className="px-2 py-1.5 text-right">Stock</th>
               </tr>
             </thead>

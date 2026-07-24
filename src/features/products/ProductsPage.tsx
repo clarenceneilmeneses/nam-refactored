@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { stockValue } from '@/lib/calculations'
+import { round2, stockValue } from '@/lib/calculations'
 import { formatPeso } from '@/lib/format'
 import type { ProductRow } from '@/types/database'
 import { ProductFormDialog } from './ProductFormDialog'
@@ -125,22 +125,35 @@ export function ProductsPage() {
     let out = 0
     let uncat = 0
     let totalSupplier = 0
-    let inventoryValue = 0
-    // Items with no supplier price can't be valued, so the total would quietly
-    // under-report without saying so — the card names the count.
-    let unpriced = 0
+    let totalSelling = 0
+    // Items with no price can't be valued, so a total would quietly under-report
+    // without saying so — each card names its own count.
+    let noSupplierPrice = 0
+    let noSellingPrice = 0
     for (const p of filtered) {
       if (p.is_draft) drafts += 1
       if ((p.current_stock ?? 0) === 0) out += 1
       if (!p.category_code || p.category_code === 'Uncategorized') uncat += 1
-      const value = stockValue(p.current_stock, p.supplier_price)
-      // Supplier price × inventory on hand — the cost of what's in stock, not a
-      // sum of unit prices (adding unit prices across products was meaningless).
-      totalSupplier += value ?? 0
-      if (value === null) unpriced += 1
-      else inventoryValue += value
+      // Both totals are unit price × inventory on hand — what the stock on hand
+      // costs on one card, what it sells for on the other. Never a sum of unit
+      // prices (adding unit prices across products was meaningless).
+      const cost = stockValue(p.current_stock, p.supplier_price)
+      if (cost === null) noSupplierPrice += 1
+      else totalSupplier += cost
+      const selling = stockValue(p.current_stock, p.nam_price)
+      if (selling === null) noSellingPrice += 1
+      else totalSelling += selling
     }
-    return { total: filtered.length, drafts, out, uncat, totalSupplier, inventoryValue, unpriced }
+    return {
+      total: filtered.length,
+      drafts,
+      out,
+      uncat,
+      totalSupplier: round2(totalSupplier),
+      totalSelling: round2(totalSelling),
+      noSupplierPrice,
+      noSellingPrice,
+    }
   }, [filtered])
 
   const selectedProducts = useMemo(
@@ -205,7 +218,7 @@ export function ProductsPage() {
           meta: { thClassName: 'text-right', tdClassName: 'text-right' },
         }),
         col.accessor('nam_price', {
-          header: 'NAM Price',
+          header: 'Selling Price',
           cell: (c) => <span className="whitespace-nowrap tabular-nums">{formatPeso(c.getValue())}</span>,
           meta: { thClassName: 'text-right', tdClassName: 'text-right' },
         }),
@@ -295,14 +308,22 @@ export function ProductsPage() {
             icon="shopping_cart"
             label="Total supplier price"
             value={formatPeso(stats.totalSupplier)}
-            hint="Supplier price × inventory"
+            hint={
+              stats.noSupplierPrice > 0
+                ? `Supplier price × inventory · ${stats.noSupplierPrice.toLocaleString()} item(s) have no supplier price`
+                : 'Supplier price × inventory'
+            }
           />
           <StatCard
             tone="good"
             icon="warehouse"
-            label="Total inventory value"
-            value={formatPeso(stats.inventoryValue)}
-            hint={stats.unpriced > 0 ? `${stats.unpriced.toLocaleString()} item(s) have no supplier price` : undefined}
+            label="Total selling price"
+            value={formatPeso(stats.totalSelling)}
+            hint={
+              stats.noSellingPrice > 0
+                ? `Selling price × inventory · ${stats.noSellingPrice.toLocaleString()} item(s) have no selling price`
+                : 'Selling price × inventory'
+            }
           />
         </div>
       )}

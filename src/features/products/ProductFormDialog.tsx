@@ -113,7 +113,7 @@ export function ProductFormDialog({
       return
     }
     if (draft.supplier_price <= 0 || draft.nam_price <= 0) {
-      toast.error('Supplier price and NAM price are required')
+      toast.error('Supplier price and selling price are required')
       return
     }
     const payload = {
@@ -233,7 +233,7 @@ export function ProductFormDialog({
             initialSupplier={product?.supplier_price ?? 0}
             initialPrice={product?.nam_price ?? 0}
             supplierLabel="Supplier Price *"
-            priceLabel="NAM Price *"
+            priceLabel="Selling Price *"
             onChange={onCalcChange}
           />
         </div>

@@ -11,7 +11,7 @@ type PriceCalculatorProps = {
   initialPrice?: number
   /** When set, shows the live Item Total (= quantity × selling price). */
   quantity?: number
-  /** Field labels; products calls these "Supplier Price" / "NAM Price". */
+  /** Field labels; products calls these "Supplier Price" / "Selling Price". */
   supplierLabel?: string
   priceLabel?: string
   onChange: (values: CalcValues) => void
